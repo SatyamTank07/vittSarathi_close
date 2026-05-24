@@ -116,17 +116,48 @@
 .pulse-dot {
   width: 8px;
   height: 8px;
-  background-color: #10b981; /* Emerald green */
   border-radius: 50%;
+  transition: background-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Dynamic dot states */
+.pulse-dot.online {
+  background-color: #10b981; /* Emerald green */
   box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
   animation: pulse-emerald 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.pulse-dot.checking {
+  background-color: #fbbf24; /* Amber yellow */
+  box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.7);
+  animation: pulse-amber 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.pulse-dot.offline {
+  background-color: #f87171; /* Soft red */
+  box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.7);
+  animation: pulse-red 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 .pulse-text {
   font-size: 0.8rem;
   font-weight: 500;
-  color: #a7f3d0; /* Soft emerald */
+  color: var(--text-muted);
   letter-spacing: 0.5px;
+  transition: color 0.3s ease;
+}
+
+/* Color matched text for state feedback */
+.pulse-indicator:has(.online) .pulse-text {
+  color: #a7f3d0; /* Soft emerald */
+}
+
+.pulse-indicator:has(.checking) .pulse-text {
+  color: #fef08a; /* Soft yellow */
+}
+
+.pulse-indicator:has(.offline) .pulse-text {
+  color: #fca5a5; /* Soft red */
 }
 
 @keyframes pulse-emerald {
@@ -141,6 +172,36 @@
   100% {
     transform: scale(0.95);
     box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+@keyframes pulse-amber {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 8px rgba(251, 191, 36, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0);
+  }
+}
+
+@keyframes pulse-red {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 8px rgba(248, 113, 113, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(248, 113, 113, 0);
   }
 }
 
