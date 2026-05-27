@@ -2,10 +2,10 @@
 .app-container {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
   width: 100%;
   position: relative;
-  overflow-x: hidden;
+  overflow: hidden;
   padding: 0 1.5rem;
 }
 
@@ -48,58 +48,36 @@
   color: var(--primary);
 }
 
-/* Active system indicator */
-.pulse-indicator {
-  display: inline-flex;
+/* Header Search */
+.header-search {
+  display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.4rem 1rem;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--border);
+}
+
+.header-glow-wrapper {
+  padding: 0.2rem;
   border-radius: 99px;
+  background: transparent;
+  border-color: var(--border);
 }
 
-.pulse-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
+.header-search-input {
+  padding: 0.4rem 1rem;
+  font-size: 0.9rem;
+  min-width: 200px;
 }
 
-.pulse-dot.online {
-  background-color: #10b981;
-  box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
-  animation: pulse-emerald 2s infinite;
+.header-search-button {
+  padding: 0.4rem 0.8rem;
+  border-radius: 99px;
+  border: none;
+  background: var(--primary);
+  color: #fff;
+  gap: 0;
 }
-
-.pulse-dot.checking {
-  background-color: #fbbf24;
-  animation: pulse-amber 2s infinite;
-}
-
-.pulse-dot.offline {
-  background-color: #ef4444;
-  box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
-  animation: pulse-red 2s infinite;
-}
-
-.pulse-text {
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--text-muted);
-  letter-spacing: 0.5px;
-}
-
-@keyframes pulse-emerald {
-  0%, 100% { transform: scale(0.9); opacity: 0.8; }
-  50% { transform: scale(1.1); opacity: 1; }
-}
-@keyframes pulse-amber {
-  0%, 100% { transform: scale(0.9); opacity: 0.8; }
-  50% { transform: scale(1.1); opacity: 1; }
-}
-@keyframes pulse-red {
-  0%, 100% { transform: scale(0.9); opacity: 0.8; }
-  50% { transform: scale(1.1); opacity: 1; }
+.header-search-button svg {
+  width: 16px;
+  height: 16px;
 }
 
 /* Main Content Area */
@@ -107,9 +85,106 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 3rem 0;
+  padding: 2rem 0 1rem 0;
   z-index: 10;
   position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.split-layout {
+  flex-direction: row;
+  gap: 2rem;
+  align-items: stretch;
+}
+
+/* Chat UI (30%) */
+.chat-section {
+  flex: 0 0 30%;
+  max-width: 30%;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.chat-header {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.chat-header h3 {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1.1rem;
+  color: var(--text-main);
+}
+
+.chat-messages {
+  flex: 1;
+  padding: 1.25rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.chat-message.system {
+  align-self: center;
+  background: rgba(255,255,255,0.05);
+  padding: 0.5rem 1rem;
+  border-radius: 1rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.chat-input-wrapper {
+  padding: 1rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 0.5rem;
+}
+
+.chat-input {
+  flex: 1;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  padding: 0.5rem 1rem;
+  color: var(--text-main);
+  outline: none;
+}
+.chat-input:focus { border-color: var(--primary); }
+
+.chat-send-btn {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: 99px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+.chat-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Dashboard UI (70%) */
+.dashboard-section {
+  flex: 0 0 calc(70% - 2rem);
+  max-width: calc(70% - 2rem);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding-right: 1rem;
+  min-height: 0;
+}
+
+.welcome-section {
+  text-align: center;
+  margin: 4rem auto;
+  max-width: 600px;
 }
 
 /* Search Section */
@@ -659,16 +734,7 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Footer layout */
-.app-footer-bar {
-  text-align: center;
-  padding: 3rem 0;
-  border-top: 1px solid var(--border);
-  font-size: 0.8rem;
-  color: var(--text-dim);
-  z-index: 10;
-  position: relative;
-}
+
 
 /* Media Queries */
 @media (max-width: 768px) {
