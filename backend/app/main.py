@@ -1,6 +1,37 @@
-from fastapi import FastAPI, HTTPException
+from dotenv import load_dotenv
+load_dotenv() # Load variables from .env file if it exists
+
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
+from pydantic import BaseModel
+from typing import List, Optional
 import yfinance as yf
+from app.database import engine, get_db
+from app import models
+from app.chat import generate_chat_response
+import traceback
+
+# Create database tables
+models.Base.metadata.create_all(bind=engine)
+
+# Pydantic schemas for Chat
+class ChatSessionCreate(BaseModel):
+    title: Optional[str] = "New Chat"
+
+class ChatSessionResponse(BaseModel):
+    id: str
+    title: str
+    created_at: str
+    
+class MessageCreate(BaseModel):
+    content: str
+
+class MessageResponse(BaseModel):
+    id: str
+    role: str
+    content: str
+    created_at: str
 
 app = FastAPI(title="vittSarathi API")
 
@@ -137,8 +168,100 @@ def get_stock_data(ticker: str):
         "heldPercentInstitutions": safe_float(info.get("heldPercentInstitutions")),
         "heldPercentInsiders": safe_float(info.get("heldPercentInsiders")),
         
-        # 12. Cash Flow
+    # 12. Cash Flow
         "freeCashFlow": safe_int(info.get("freeCashFlow"))
     }
     
     return payload
+
+# --- Chat Endpoints ---
+
+@app.post("/api/chat/sessions", response_model=ChatSessionResponse)
+def create_chat_session(session_data: ChatSessionCreate, db: Session = Depends(get_db)):
+    db_session = models.ChatSession(title=session_data.title)
+    db.add(db_session)
+    db.commit()
+    db.refresh(db_session)
+    return {
+        "id": db_session.id, 
+        "title": db_session.title, 
+        "created_at": db_session.created_at.isoformat()
+    }
+
+@app.get("/api/chat/sessions", response_model=List[ChatSessionResponse])
+def get_chat_sessions(db: Session = Depends(get_db)):
+    sessions = db.query(models.ChatSession).order_by(models.ChatSession.created_at.desc()).all()
+    return [
+        {
+            "id": session.id,
+            "title": session.title,
+            "created_at": session.created_at.isoformat()
+        }
+        for session in sessions
+    ]
+
+@app.delete("/api/chat/sessions/{session_id}")
+def delete_chat_session(session_id: str, db: Session = Depends(get_db)):
+    db_session = db.query(models.ChatSession).filter(models.ChatSession.id == session_id).first()
+    if not db_session:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+        
+    db.delete(db_session)
+    db.commit()
+    return {"message": "Session deleted successfully"}
+
+@app.get("/api/chat/sessions/{session_id}/messages", response_model=List[MessageResponse])
+def get_chat_messages(session_id: str, db: Session = Depends(get_db)):
+    db_session = db.query(models.ChatSession).filter(models.ChatSession.id == session_id).first()
+    if not db_session:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+        
+    messages = []
+    for msg in db_session.messages:
+        messages.append({
+            "id": msg.id,
+            "role": msg.role,
+            "content": msg.content,
+            "created_at": msg.created_at.isoformat()
+        })
+    return messages
+
+@app.post("/api/chat/sessions/{session_id}/message", response_model=MessageResponse)
+def send_chat_message(session_id: str, message_data: MessageCreate, db: Session = Depends(get_db)):
+    # 1. Verify session exists
+    db_session = db.query(models.ChatSession).filter(models.ChatSession.id == session_id).first()
+    if not db_session:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+        
+    # 2. Save user message
+    user_msg = models.ChatMessage(session_id=session_id, role="user", content=message_data.content)
+    db.add(user_msg)
+    db.commit()
+    
+    # 3. Retrieve chat history
+    history = db.query(models.ChatMessage).filter(models.ChatMessage.session_id == session_id).order_by(models.ChatMessage.created_at).all()
+    
+    # Exclude the message we just added from the history passed as context (or we can just pass everything except the last and then append it in chat.py)
+    # Actually, chat.py signature takes history and new message separately, so let's exclude the last one.
+    history_dicts = [{"role": msg.role, "content": msg.content} for msg in history[:-1]]
+    
+    # 4. Generate AI response
+    try:
+        ai_response_content = generate_chat_response(history_dicts, message_data.content)
+    except Exception as e:
+        error_details = traceback.format_exc()
+        print(f"ERROR generating chat response:\n{error_details}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate response: {str(e)}\n\nDetails:\n{error_details}")
+        
+    # 5. Save AI message
+    ai_msg = models.ChatMessage(session_id=session_id, role="assistant", content=ai_response_content)
+    db.add(ai_msg)
+    db.commit()
+    db.refresh(ai_msg)
+    
+    return {
+        "id": ai_msg.id,
+        "role": ai_msg.role,
+        "content": ai_msg.content,
+        "created_at": ai_msg.created_at.isoformat()
+    }

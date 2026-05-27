@@ -23,7 +23,6 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/workspace
-      # Prevent node_modules or virtualenv from mounting back if they exist, not needed here
     environment:
       - PYTHONUNBUFFERED=1
       - ENV=development
@@ -33,3 +32,6 @@ services:
     depends_on:
       - db
     restart: always
+
+volumes:
+  pgdata:
