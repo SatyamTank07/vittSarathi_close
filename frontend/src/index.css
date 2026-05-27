@@ -2,29 +2,27 @@
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-heading: 'Outfit', var(--font-sans);
   
-  /* Color Palette - Premium Dark Theme */
-  --bg-deep: #060814;
-  --bg-card: rgba(13, 17, 39, 0.7);
-  --bg-card-hover: rgba(20, 26, 56, 0.85);
-  --border: rgba(255, 255, 255, 0.06);
-  --border-focus: rgba(168, 85, 247, 0.4);
+  /* Color Palette - Simple Purple Theme */
+  --bg-deep: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card-hover: #faf5ff;
+  --border: #d8b4fe;
+  --border-focus: #9333ea;
   
-  --primary: #a855f7;      /* Neon Violet */
-  --secondary: #22d3ee;    /* Neon Cyan */
-  --tertiary: #f43f5e;     /* Rose Pink */
+  --primary: #9333ea;
+  --secondary: #a855f7;
+  --tertiary: #c084fc;
   
-  --primary-glow: rgba(168, 85, 247, 0.15);
-  --secondary-glow: rgba(34, 211, 238, 0.1);
-  --text-main: #f8fafc;
-  --text-muted: #94a3b8;
-  --text-dim: #64748b;
+  --text-main: #111827;
+  --text-muted: #4b5563;
+  --text-dim: #6b7280;
   
-  --shadow-sm: 0 2px 8px -2px rgba(0, 0, 0, 0.5);
-  --shadow-md: 0 12px 32px -8px rgba(0, 0, 0, 0.8);
-  --shadow-lg: 0 20px 48px -12px rgba(0, 0, 0, 0.9);
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
   
-  --glass-bg: rgba(13, 17, 39, 0.45);
-  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-bg: #ffffff;
+  --glass-border: #d8b4fe;
   
   box-sizing: border-box;
 }
@@ -42,22 +40,6 @@ body {
   min-height: 100vh;
   overflow-x: hidden;
   position: relative;
-  background-image: 
-    radial-gradient(circle at 10% 20%, rgba(168, 85, 247, 0.08) 0%, transparent 40%),
-    radial-gradient(circle at 90% 80%, rgba(34, 211, 238, 0.06) 0%, transparent 40%);
-  background-attachment: fixed;
-}
-
-/* Background grid overlay */
-body::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image: linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
-                    linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
-  background-size: 40px 40px;
-  pointer-events: none;
-  z-index: 0;
 }
 
 #root {
@@ -82,10 +64,10 @@ body::after {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--border);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(168, 85, 247, 0.3);
+  background: var(--border-focus);
 }

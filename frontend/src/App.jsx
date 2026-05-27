@@ -129,8 +129,6 @@ function App() {
 
   return (
     <div className="app-container">
-      <div className="glow-orb glow-orb-1"></div>
-      <div className="glow-orb glow-orb-2"></div>
 
       {/* Header */}
       <header className="app-header">
