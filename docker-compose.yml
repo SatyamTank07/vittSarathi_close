@@ -1,11 +1,24 @@
 version: '3.8'
 
 services:
+  db:
+    image: postgres:15-alpine
+    container_name: vittsarathi_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: vittsarathi_chat
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: always
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: ai_funda_backend
+    container_name: vittsarathi_backend
     ports:
       - "8000:8000"
     volumes:
@@ -14,4 +27,9 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - ENV=development
+      - DATABASE_URL=postgresql://postgres:password@db:5432/vittsarathi_chat
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - db
     restart: always

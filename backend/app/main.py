@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import yfinance as yf
 
-app = FastAPI(title="Ai Funda API")
+app = FastAPI(title="vittSarathi API")
 
 # Allow connections from the frontend dev server
 app.add_middleware(

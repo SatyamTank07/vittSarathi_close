@@ -1,4 +1,4 @@
-# 🔮 Ai Funda - Intelligent AI Playground
+# 🔮 vittSarathi - Intelligent AI Playground
 
 A high-fidelity playground application featuring a containerized **FastAPI** backend and a sleek, modern **React + Vite** frontend. The setup is designed with a premium dark theme, neon glowing aesthetics, and a dynamic glassmorphic card that real-time monitors the connection status of the FastAPI backend.
 
@@ -37,7 +37,7 @@ sequenceDiagram
 ## 📁 Workspace Directory Structure
 
 ```text
-Ai Funda/
+vittSarathi/
 ├── backend/
 │   ├── app/
 │   │   ├── __init__.py
@@ -70,7 +70,7 @@ Ai Funda/
 ---
 
 ### 1. Spin Up the Backend (Docker)
-Open your terminal in the root directory `c:\Satyam\Ai Funda` and run:
+Open your terminal in the root directory `c:\Satyam\vittSarathi` and run:
 ```powershell
 docker compose up -d
 ```
@@ -103,7 +103,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: ai_funda_backend
+    container_name: vittsarathi_backend
     ports:
       - "8000:8000"
     volumes:
@@ -138,7 +138,7 @@ app.add_middleware(
 | **Start Services** | `docker compose up -d` |
 | **Stop Services** | `docker compose down` |
 | **Force Rebuild** | `docker compose up --build -d` |
-| **Stream Live Logs** | `docker logs -f ai_funda_backend` |
+| **Stream Live Logs** | `docker logs -f vittsarathi_backend` |
 
 ### Frontend Administration
 | Task | Command |
