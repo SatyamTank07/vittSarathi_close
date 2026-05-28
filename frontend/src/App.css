@@ -85,17 +85,11 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 2rem 0 1rem 0;
+  padding: 1.5rem 0 1rem 0;
   z-index: 10;
   position: relative;
   min-height: 0;
-  overflow: hidden;
-}
-
-.split-layout {
-  flex-direction: row;
-  gap: 2rem;
-  align-items: stretch;
+  overflow-y: auto;
 }
 
 /* Chat UI (30%) */
@@ -373,14 +367,13 @@
 }
 .chat-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* Dashboard UI (70%) */
+/* Dashboard UI (full width) */
 .dashboard-section {
-  flex: 0 0 calc(70% - 2rem);
-  max-width: calc(70% - 2rem);
+  flex: 1;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  padding-right: 1rem;
   min-height: 0;
 }
 
@@ -937,7 +930,410 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* ═══════════════════════════════════════════════════════════
+   ANALYSIS SYSTEM — New Styles
+   ═══════════════════════════════════════════════════════════ */
 
+/* Analysis Bar (horizontal report history) */
+.analysis-bar {
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  padding: 0.75rem 0;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  overflow-x: auto;
+  flex-shrink: 0;
+  margin-top: 0.5rem;
+}
+
+.analysis-bar-label {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.report-chips {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  flex: 1;
+}
+
+.report-chip {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+}
+
+.report-chip:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.report-chip.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.report-chip .chip-verdict {
+  font-weight: 700;
+}
+
+.report-chip .chip-delete {
+  opacity: 0;
+  font-size: 0.9rem;
+  transition: opacity 0.2s;
+  margin-left: 0.2rem;
+  cursor: pointer;
+}
+
+.report-chip:hover .chip-delete {
+  opacity: 1;
+}
+
+.chip-delete:hover {
+  color: #ef4444;
+}
+
+/* Analysis Loading State */
+.analysis-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  gap: 1.5rem;
+}
+
+.analysis-spinner {
+  width: 56px;
+  height: 56px;
+  border: 4px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.analysis-loading h2 {
+  font-family: var(--font-heading);
+  font-size: 1.5rem;
+  color: var(--text-main);
+  margin: 0;
+}
+
+.analysis-loading p {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.agent-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: 100%;
+  max-width: 420px;
+}
+
+.agent-step {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  transition: all 0.3s;
+}
+
+.agent-step.active {
+  background: rgba(147, 51, 234, 0.06);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.agent-step.done {
+  color: #10b981;
+}
+
+.agent-step-icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.agent-step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.agent-step.active .agent-step-dot {
+  background: var(--primary);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.agent-step.done .agent-step-dot {
+  background: #10b981;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.6); opacity: 0.4; }
+}
+
+/* Report View */
+.report-view {
+  animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Verdict Banner */
+.verdict-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5rem 2rem;
+  border-radius: 1rem;
+  margin-bottom: 2rem;
+  border: 2px solid;
+}
+
+.verdict-banner.bullish {
+  background: rgba(16, 185, 129, 0.05);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.verdict-banner.neutral {
+  background: rgba(245, 158, 11, 0.05);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.verdict-banner.bearish {
+  background: rgba(239, 68, 68, 0.05);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.verdict-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.verdict-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+}
+
+.verdict-value {
+  font-family: var(--font-heading);
+  font-size: 2rem;
+  font-weight: 800;
+}
+
+.verdict-value.bullish { color: #10b981; }
+.verdict-value.neutral { color: #f59e0b; }
+.verdict-value.bearish { color: #ef4444; }
+
+.verdict-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+}
+
+.verdict-confidence {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.verdict-duration {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+/* Agent Section Cards */
+.agent-sections {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 1.25rem;
+  margin-bottom: 2rem;
+}
+
+.agent-card {
+  background: var(--bg-card);
+  border: 2px solid var(--border);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  transition: transform 0.3s, border-color 0.3s;
+}
+
+.agent-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--primary);
+}
+
+.agent-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.agent-card-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+}
+
+.agent-card-icon.quant { background: rgba(16, 185, 129, 0.1); }
+.agent-card-icon.qual { background: rgba(59, 130, 246, 0.1); }
+.agent-card-icon.risk { background: rgba(239, 68, 68, 0.1); }
+
+.agent-card-title {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--text-main);
+}
+
+.agent-card-subtitle {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.agent-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.agent-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.agent-field-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.agent-field-value {
+  font-size: 0.88rem;
+  color: var(--text-main);
+  line-height: 1.5;
+}
+
+/* Red Flags */
+.red-flags-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.red-flag-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-main);
+  padding: 0.4rem 0.6rem;
+  background: rgba(239, 68, 68, 0.04);
+  border-radius: 0.5rem;
+  border-left: 3px solid #ef4444;
+  line-height: 1.4;
+}
+
+.red-flag-icon {
+  color: #ef4444;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+/* Final Thesis */
+.thesis-section {
+  background: var(--bg-card);
+  border: 2px solid var(--border);
+  border-radius: 1rem;
+  padding: 2rem;
+  margin-bottom: 2rem;
+}
+
+.thesis-section h3 {
+  font-family: var(--font-heading);
+  font-size: 1.2rem;
+  margin: 0 0 1rem 0;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.thesis-content {
+  font-size: 0.92rem;
+  line-height: 1.7;
+  color: var(--text-main);
+  white-space: pre-wrap;
+}
+
+/* Governance & Risk Badges */
+.governance-badge, .risk-badge {
+  display: inline-flex;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.governance-badge.strong, .risk-badge.low {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.governance-badge.moderate, .risk-badge.medium {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.governance-badge.weak, .risk-badge.high {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
 
 /* Media Queries */
 @media (max-width: 768px) {
