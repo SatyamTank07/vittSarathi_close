@@ -1,47 +1,19 @@
-"""
-Agent 6: The Synthesizer (The Chief Investment Officer)
-
-Responsibilities:
-- Reads the completed SharedState with all agent outputs
-- Cross-references and resolves contradictions
-- Compiles a cohesive Markdown investment thesis
-- Determines investment verdict (Bullish/Neutral/Bearish) with confidence level
-"""
-
 import logging
-from app.agents.base_agent import BaseAgent
-from app.agents.shared_state import SharedState
+from src.agents.base.base_agent import BaseAgent
+from src.agents.base.shared_state import SharedState
+from .config import SynthesizerConfig
 
 logger = logging.getLogger("vittsarathi.agents.synthesizer")
 
-SYSTEM_PROMPT = """You are the Chief Investment Officer at a premier investment firm. You are writing the FINAL investment thesis by synthesizing three independent research reports: Quantitative Analysis, Qualitative Assessment, and Risk Investigation.
-
-Your task: Cross-reference the reports, resolve any contradictions, and produce a clear investment verdict.
-
-RULES:
-1. If the numbers look great but the risk report raises serious concerns, DO NOT ignore the risks. Weigh them explicitly.
-2. If agents contradict each other, acknowledge both views and explain your resolution.
-3. Your output must be a PROFESSIONAL investment thesis in Markdown format.
-4. End with a clear verdict: Bullish, Neutral, or Bearish — with a confidence level (High, Medium, Low).
-5. Be balanced and evidence-based. Never recommend without citing specific data points from the agents' reports.
-6. Use the specific numbers and facts from the analysis — don't generalize.
-
-Respond in VALID JSON with exactly these keys:
-{
-  "final_thesis": "... full markdown report ...",
-  "investment_verdict": "Bullish|Neutral|Bearish",
-  "confidence_level": "High|Medium|Low"
-}"""
-
-
 class SynthesizerAgent(BaseAgent):
-    """Agent 6: The Chief Investment Officer — synthesis, conflict resolution, final report."""
-
-    agent_name = "synthesizer"
-    model = "gpt-4o-mini"
+    def __init__(self):
+        self.config = SynthesizerConfig
+        self.agent_name = self.config["name"]
+        self.model = self.config["model"]
+        self.max_tokens = self.config.get("max_tokens", 700)
+        self.system_prompt = self.config["system_prompt"]
 
     def _build_prompt(self, state: SharedState) -> str:
-        """Build the synthesis prompt with all agent outputs."""
         sections = []
 
         sections.append(f"COMPANY: {state.company_name} ({state.ticker})")
@@ -49,7 +21,6 @@ class SynthesizerAgent(BaseAgent):
         sections.append(f"PRICE: {state.currency} {state.current_price}")
         sections.append("")
 
-        # Quantitative report
         if state.quantitative:
             q = state.quantitative
             sections.append("═══ QUANTITATIVE ANALYSIS (Agent 2 — The Accountant) ═══")
@@ -62,7 +33,6 @@ class SynthesizerAgent(BaseAgent):
                 sections.append(f"Raw Ratios: {q.raw_ratios}")
             sections.append("")
 
-        # Qualitative report
         if state.qualitative:
             ql = state.qualitative
             sections.append("═══ QUALITATIVE ASSESSMENT (Agent 3 — The Strategist) ═══")
@@ -73,7 +43,6 @@ class SynthesizerAgent(BaseAgent):
             sections.append(f"Narrative: {ql.narrative_explanation}")
             sections.append("")
 
-        # Risk report
         if state.risk_governance:
             r = state.risk_governance
             sections.append("═══ RISK INVESTIGATION (Agent 4 — The Investigator) ═══")
@@ -92,15 +61,14 @@ class SynthesizerAgent(BaseAgent):
         return "\n".join(sections)
 
     async def execute(self, state: SharedState) -> SharedState:
-        state.agent_statuses["synthesizer"] = "running"
-        logger.info(f"[synthesizer] Compiling final thesis for {state.ticker}")
+        state.agent_statuses[self.agent_name] = "running"
+        logger.info(f"[{self.agent_name}] Compiling final thesis for {state.ticker}")
 
         prompt = self._build_prompt(state)
-        response_text = self._call_llm(SYSTEM_PROMPT, prompt)
+        response_text = self._call_llm(self.system_prompt, prompt)
         parsed = self._parse_json(response_text)
 
         if "_parse_error" in parsed:
-            # If JSON parsing fails, use the raw text as the thesis
             state.final_thesis = parsed.get("_raw_text", "Synthesis failed — raw output unavailable.")
             state.investment_verdict = "Neutral"
             state.confidence_level = "Low"
@@ -109,10 +77,8 @@ class SynthesizerAgent(BaseAgent):
             state.investment_verdict = parsed.get("investment_verdict", "Neutral")
             state.confidence_level = parsed.get("confidence_level", "Low")
 
-        state.agent_statuses["synthesizer"] = "completed"
-        logger.info(f"[synthesizer] Verdict for {state.ticker}: {state.investment_verdict} ({state.confidence_level})")
+        state.agent_statuses[self.agent_name] = "completed"
+        logger.info(f"[{self.agent_name}] Verdict for {state.ticker}: {state.investment_verdict} ({state.confidence_level})")
         return state
 
-
-# Singleton instance
 synthesizer = SynthesizerAgent()

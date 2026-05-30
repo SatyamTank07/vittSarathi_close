@@ -1,50 +1,19 @@
-"""
-Agent 3: The Qualitative Agent (The Business Strategist)
-
-Responsibilities:
-- Competitive moat identification (brand, network effects, cost leadership)
-- Management quality assessment
-- Growth catalyst identification
-- Business model durability analysis
-- Narrative explanation connecting the "why" behind the numbers
-"""
-
 import logging
-from app.agents.base_agent import BaseAgent
-from app.agents.shared_state import SharedState, QualitativeOutput
+from src.agents.base.base_agent import BaseAgent
+from src.agents.base.shared_state import SharedState, QualitativeOutput
+from .config import QualitativeConfig
 
 logger = logging.getLogger("vittsarathi.agents.qualitative")
 
-SYSTEM_PROMPT = """You are a senior business strategist at a premier consulting firm. Your expertise is PURELY QUALITATIVE — you think in narratives, competitive advantages, and business strategy.
-
-Your task: Analyze the provided company data and produce a strategic business assessment.
-
-RULES:
-1. Base your analysis ONLY on the data provided. Do NOT make claims you cannot support from the data.
-2. Focus on the NARRATIVE — the "why" behind the numbers.
-3. Identify competitive moats using the framework: Brand Power, Network Effects, Switching Costs, Cost Leadership, Intangible Assets.
-4. Assess management quality through their capital allocation and stated strategy.
-5. Be specific and actionable. Don't say "good company" — explain WHY.
-6. Adapt your analysis to the industry-specific focus provided.
-
-Respond in VALID JSON with exactly these keys:
-{
-  "moat_analysis": "...",
-  "management_quality": "...",
-  "growth_catalysts": "...",
-  "business_model": "...",
-  "narrative_explanation": "..."
-}"""
-
-
 class QualitativeAgent(BaseAgent):
-    """Agent 3: The Business Strategist — narrative, moat, and strategy."""
-
-    agent_name = "qualitative"
-    model = "gpt-3.5-turbo"
+    def __init__(self):
+        self.config = QualitativeConfig
+        self.agent_name = self.config["name"]
+        self.model = self.config["model"]
+        self.max_tokens = self.config.get("max_tokens", 700)
+        self.system_prompt = self.config["system_prompt"]
 
     def _build_prompt(self, state: SharedState) -> str:
-        """Build user prompt with company context and business data."""
         data = state.stock_data
         instructions = state.industry_instructions.get("qualitative_focus", "")
 
@@ -79,11 +48,11 @@ INDUSTRY-SPECIFIC FOCUS:
 Produce your qualitative business assessment as a JSON object."""
 
     async def execute(self, state: SharedState) -> SharedState:
-        state.agent_statuses["qualitative"] = "running"
-        logger.info(f"[qualitative] Analyzing {state.ticker}")
+        state.agent_statuses[self.agent_name] = "running"
+        logger.info(f"[{self.agent_name}] Analyzing {state.ticker}")
 
         prompt = self._build_prompt(state)
-        response_text = self._call_llm(SYSTEM_PROMPT, prompt)
+        response_text = self._call_llm(self.system_prompt, prompt)
         parsed = self._parse_json(response_text)
 
         if "_parse_error" in parsed:
@@ -103,10 +72,8 @@ Produce your qualitative business assessment as a JSON object."""
                 narrative_explanation=parsed.get("narrative_explanation", "N/A"),
             )
 
-        state.agent_statuses["qualitative"] = "completed"
-        logger.info(f"[qualitative] Done for {state.ticker}")
+        state.agent_statuses[self.agent_name] = "completed"
+        logger.info(f"[{self.agent_name}] Done for {state.ticker}")
         return state
 
-
-# Singleton instance
 qualitative_agent = QualitativeAgent()

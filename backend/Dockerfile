@@ -14,4 +14,4 @@ COPY . .
 EXPOSE 8000
 
 # Run uvicorn server pointing to app/main.py
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

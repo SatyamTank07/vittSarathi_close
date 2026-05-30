@@ -1,55 +1,22 @@
-"""
-Agent 2: The Quantitative Agent (The Accountant)
-
-Responsibilities:
-- Deterministic financial math and ratio analysis
-- Historical trend identification (revenue, margins, profitability)
-- Sector-adapted metric evaluation
-- Valuation assessment (PE, PB, intrinsic value indicators)
-- Financial health scoring (leverage, ROE, ROCE)
-"""
-
-import json
 import logging
-from app.agents.base_agent import BaseAgent
-from app.agents.shared_state import SharedState, QuantitativeOutput
+from src.agents.base.base_agent import BaseAgent
+from src.agents.base.shared_state import SharedState, QuantitativeOutput
+from .config import QuantitativeConfig
 
 logger = logging.getLogger("vittsarathi.agents.quantitative")
 
-SYSTEM_PROMPT = """You are a senior financial analyst working at a top investment firm. Your expertise is PURELY QUANTITATIVE — you think entirely in numbers, ratios, and mathematical trends.
-
-Your task: Analyze the provided stock data and produce a structured financial assessment.
-
-RULES:
-1. Base your analysis ONLY on the data provided. Do NOT hallucinate numbers.
-2. If a metric is missing or null, say "Data not available" — never invent values.
-3. Be specific with numbers. Don't say "good margins" — say "profit margin of 18.5% which is above the industry average."
-4. Adapt your analysis to the industry-specific focus provided.
-5. Be concise but substantive. Every sentence should contain a fact or insight.
-
-Respond in VALID JSON with exactly these keys:
-{
-  "revenue_trend": "...",
-  "profit_margin_analysis": "...",
-  "valuation_assessment": "...",
-  "health_metrics": "...",
-  "sector_specific": "...",
-  "raw_ratios": { ... computed numeric values ... }
-}"""
-
-
 class QuantitativeAgent(BaseAgent):
-    """Agent 2: The Accountant — pure numbers and ratios."""
-
-    agent_name = "quantitative"
-    model = "gpt-3.5-turbo"
+    def __init__(self):
+        self.config = QuantitativeConfig
+        self.agent_name = self.config["name"]
+        self.model = self.config["model"]
+        self.max_tokens = self.config.get("max_tokens", 700)
+        self.system_prompt = self.config["system_prompt"]
 
     def _build_prompt(self, state: SharedState) -> str:
-        """Build the user prompt with all relevant financial data."""
         data = state.stock_data
         instructions = state.industry_instructions.get("quantitative_focus", "")
 
-        # Extract key financial metrics for the prompt
         metrics = {
             "Company": state.company_name,
             "Ticker": state.ticker,
@@ -100,14 +67,13 @@ INDUSTRY-SPECIFIC FOCUS:
 Produce your quantitative analysis as a JSON object."""
 
     async def execute(self, state: SharedState) -> SharedState:
-        state.agent_statuses["quantitative"] = "running"
-        logger.info(f"[quantitative] Analyzing {state.ticker}")
+        state.agent_statuses[self.agent_name] = "running"
+        logger.info(f"[{self.agent_name}] Analyzing {state.ticker}")
 
         prompt = self._build_prompt(state)
-        response_text = self._call_llm(SYSTEM_PROMPT, prompt)
+        response_text = self._call_llm(self.system_prompt, prompt)
         parsed = self._parse_json(response_text)
 
-        # Handle parse failures gracefully
         if "_parse_error" in parsed:
             state.quantitative = QuantitativeOutput(
                 revenue_trend="Analysis completed — see raw text",
@@ -127,10 +93,8 @@ Produce your quantitative analysis as a JSON object."""
                 raw_ratios=parsed.get("raw_ratios", {}),
             )
 
-        state.agent_statuses["quantitative"] = "completed"
-        logger.info(f"[quantitative] Done for {state.ticker}")
+        state.agent_statuses[self.agent_name] = "completed"
+        logger.info(f"[{self.agent_name}] Done for {state.ticker}")
         return state
 
-
-# Singleton instance
 quantitative_agent = QuantitativeAgent()

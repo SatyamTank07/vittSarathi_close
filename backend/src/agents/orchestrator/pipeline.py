@@ -1,41 +1,18 @@
-"""
-Pipeline — The orchestration engine that ties all agents together.
-
-Flow:
-1. Orchestrator fetches data, classifies industry, creates SharedState
-2. Quantitative + Qualitative + Risk agents run IN PARALLEL
-3. Synthesizer reads all outputs, resolves contradictions, produces final thesis
-4. Report is saved to PostgreSQL
-"""
-
 import asyncio
 import logging
-import json
 from datetime import datetime, timezone
-
 from sqlalchemy.orm import Session
 
-from app.agents.orchestrator import orchestrator
-from app.agents.quantitative_agent import quantitative_agent
-from app.agents.qualitative_agent import qualitative_agent
-from app.agents.risk_agent import risk_agent
-from app.agents.synthesizer import synthesizer
-from app.agents.shared_state import SharedState
+from src.agents.orchestrator.agent import orchestrator
+from src.agents.quantitative.agent import quantitative_agent
+from src.agents.qualitative.agent import qualitative_agent
+from src.agents.risk.agent import risk_agent
+from src.agents.synthesizer.agent import synthesizer
+from src.agents.base.shared_state import SharedState
 
 logger = logging.getLogger("vittsarathi.pipeline")
 
-
 async def run_analysis(ticker: str) -> dict:
-    """
-    Run the full multi-agent analysis pipeline.
-    
-    Args:
-        ticker: Stock ticker symbol (e.g., "TCS", "RELIANCE.NS")
-        
-    Returns:
-        Dict with the complete analysis result including final thesis,
-        individual agent outputs, and metadata.
-    """
     logger.info(f"[pipeline] ===== Starting analysis for {ticker} =====")
     start_time = datetime.now(timezone.utc)
 
@@ -47,7 +24,6 @@ async def run_analysis(ticker: str) -> dict:
     # ─── Step 2: Parallel Sub-Agents ───
     logger.info("[pipeline] Step 2: Running Quantitative + Qualitative + Risk agents in PARALLEL")
 
-    # Deep copy the state for each agent so they don't interfere
     quant_state_copy = state.model_copy(deep=True)
     qual_state_copy = state.model_copy(deep=True)
     risk_state_copy = state.model_copy(deep=True)
@@ -58,7 +34,6 @@ async def run_analysis(ticker: str) -> dict:
         risk_agent.execute(risk_state_copy),
     )
 
-    # Merge outputs back into the master state
     state.quantitative = quant_result.quantitative
     state.qualitative = qual_result.qualitative
     state.risk_governance = risk_result.risk_governance
@@ -78,7 +53,6 @@ async def run_analysis(ticker: str) -> dict:
     logger.info(f"[pipeline] ===== Analysis complete for {ticker} in {elapsed:.1f}s =====")
     logger.info(f"[pipeline] Verdict: {state.investment_verdict} (Confidence: {state.confidence_level})")
 
-    # ─── Build response ───
     result = {
         "ticker": state.ticker,
         "company_name": state.company_name,
@@ -99,14 +73,8 @@ async def run_analysis(ticker: str) -> dict:
 
     return result
 
-
 def save_report_to_db(db: Session, result: dict) -> str:
-    """
-    Save the analysis result to the database.
-    
-    Returns the report ID.
-    """
-    from app.models import AnalysisReport
+    from src.core.database.models import AnalysisReport
 
     report = AnalysisReport(
         ticker=result["ticker"],

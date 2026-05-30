@@ -1,7 +1,7 @@
 from sqlalchemy import Column, String, DateTime, Text
 import uuid
 from datetime import datetime, timezone
-from app.database import Base
+from src.core.database.connection import Base
 
 
 class AnalysisReport(Base):

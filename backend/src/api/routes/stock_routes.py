@@ -1,52 +1,16 @@
-from dotenv import load_dotenv
-load_dotenv()  # Load variables from .env file if it exists
-
-import logging
-from fastapi import FastAPI, HTTPException, Depends
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
-from typing import List, Optional
 import yfinance as yf
-from app.database import engine, get_db
-from app import models
-from app.agents.pipeline import run_analysis, save_report_to_db
 import traceback
+import logging
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-)
+from src.core.database.connection import get_db
+from src.agents.orchestrator.pipeline import run_analysis, save_report_to_db
 
-# Create database tables
-models.Base.metadata.create_all(bind=engine)
+router = APIRouter(prefix="/api")
+logger = logging.getLogger("vittsarathi.api.stock_routes")
 
-app = FastAPI(title="vittSarathi API — Multi-Agent Stock Analysis")
-
-# Allow connections from the frontend dev server
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-@app.get("/")
-def read_root():
-    return {
-        "status": "running",
-        "message": "vittSarathi backend is active!",
-        "version": "2.0 — Agent Orchestration",
-    }
-
-
-# ═══════════════════════════════════════════════════════════
-#  STOCK DATA ENDPOINT (Quick lookup — unchanged)
-# ═══════════════════════════════════════════════════════════
-
-@app.get("/api/stock/{ticker}")
+@router.get("/stock/{ticker}")
 def get_stock_data(ticker: str):
     ticker = ticker.upper().strip()
 
@@ -142,22 +106,10 @@ def get_stock_data(ticker: str):
     return payload
 
 
-# ═══════════════════════════════════════════════════════════
-#  MULTI-AGENT ANALYSIS ENDPOINTS
-# ═══════════════════════════════════════════════════════════
-
-@app.post("/api/analyze/{ticker}")
+@router.post("/analyze/{ticker}")
 async def analyze_stock(ticker: str, db: Session = Depends(get_db)):
     """
     Run the full multi-agent fundamental analysis pipeline.
-    
-    This triggers:
-    1. Orchestrator → fetches data, classifies industry
-    2. Quantitative + Qualitative + Risk agents → run in parallel
-    3. Synthesizer → cross-references, resolves contradictions, compiles final thesis
-    4. Report saved to PostgreSQL
-    
-    Returns the complete analysis result.
     """
     try:
         result = await run_analysis(ticker)
@@ -175,68 +127,8 @@ async def analyze_stock(ticker: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         error_details = traceback.format_exc()
-        print(f"ERROR in analysis pipeline:\n{error_details}")
+        logger.error(f"ERROR in analysis pipeline:\n{error_details}")
         raise HTTPException(
             status_code=500,
             detail=f"Analysis failed: {str(e)}"
         )
-
-
-@app.get("/api/reports")
-def get_reports(db: Session = Depends(get_db)):
-    """List all past analysis reports (most recent first)."""
-    reports = db.query(models.AnalysisReport).order_by(
-        models.AnalysisReport.created_at.desc()
-    ).all()
-
-    return [
-        {
-            "id": r.id,
-            "ticker": r.ticker,
-            "company_name": r.company_name,
-            "sector": r.sector,
-            "industry": r.industry,
-            "investment_verdict": r.investment_verdict,
-            "confidence_level": r.confidence_level,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
-        }
-        for r in reports
-    ]
-
-
-@app.get("/api/reports/{report_id}")
-def get_report(report_id: str, db: Session = Depends(get_db)):
-    """Retrieve a specific analysis report by ID."""
-    report = db.query(models.AnalysisReport).filter(
-        models.AnalysisReport.id == report_id
-    ).first()
-
-    if not report:
-        raise HTTPException(status_code=404, detail="Report not found")
-
-    return {
-        "id": report.id,
-        "ticker": report.ticker,
-        "company_name": report.company_name,
-        "sector": report.sector,
-        "industry": report.industry,
-        "investment_verdict": report.investment_verdict,
-        "confidence_level": report.confidence_level,
-        "report_markdown": report.report_markdown,
-        "created_at": report.created_at.isoformat() if report.created_at else None,
-    }
-
-
-@app.delete("/api/reports/{report_id}")
-def delete_report(report_id: str, db: Session = Depends(get_db)):
-    """Delete a specific analysis report."""
-    report = db.query(models.AnalysisReport).filter(
-        models.AnalysisReport.id == report_id
-    ).first()
-
-    if not report:
-        raise HTTPException(status_code=404, detail="Report not found")
-
-    db.delete(report)
-    db.commit()
-    return {"message": "Report deleted successfully"}

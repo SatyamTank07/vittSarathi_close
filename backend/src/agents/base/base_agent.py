@@ -1,12 +1,5 @@
 """
 Base Agent — Abstract base class for all VittSarathi agents.
-
-Provides:
-- LLM factory with model selection (gpt-4o-mini vs gpt-3.5-turbo)
-- max_tokens=700 enforced on all calls
-- Structured JSON parsing from LLM responses
-- Retry logic (1 retry on failure)
-- Logging
 """
 
 import os
@@ -16,7 +9,7 @@ from abc import ABC, abstractmethod
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
-from app.agents.shared_state import SharedState
+from src.agents.base.shared_state import SharedState
 
 logger = logging.getLogger("vittsarathi.agents")
 
@@ -24,13 +17,11 @@ logger = logging.getLogger("vittsarathi.agents")
 class BaseAgent(ABC):
     """Abstract base class for all agents in the orchestration pipeline."""
 
-    # Subclasses set these
     agent_name: str = "base"
-    model: str = "gpt-3.5-turbo"  # Override to "gpt-4o-mini" for orchestrator/synthesizer
-    max_tokens: int = 700
+    model: str = "gpt-3.5-turbo"
+    max_tokens: int
 
     def _get_llm(self) -> ChatOpenAI:
-        """Create an LLM instance with the agent's model and token settings."""
         api_key = os.environ.get("OPENAI_API_KEY", "")
         api_key = api_key.strip('"').strip("'")
 
@@ -45,10 +36,6 @@ class BaseAgent(ABC):
         )
 
     def _call_llm(self, system_prompt: str, user_prompt: str) -> str:
-        """
-        Call the LLM with retry logic.
-        Returns the raw text content from the model.
-        """
         llm = self._get_llm()
         messages = [
             SystemMessage(content=system_prompt),
@@ -56,7 +43,7 @@ class BaseAgent(ABC):
         ]
 
         last_error = None
-        for attempt in range(2):  # 1 retry
+        for attempt in range(2):
             try:
                 logger.info(f"[{self.agent_name}] Calling {self.model} (attempt {attempt + 1})")
                 response = llm.invoke(messages)
@@ -69,16 +56,10 @@ class BaseAgent(ABC):
         raise RuntimeError(f"[{self.agent_name}] All retries exhausted: {last_error}")
 
     def _parse_json(self, text: str) -> dict:
-        """
-        Extract JSON from an LLM response.
-        Handles responses wrapped in ```json ... ``` code blocks.
-        """
         cleaned = text.strip()
 
-        # Strip markdown code fences if present
         if cleaned.startswith("```"):
             lines = cleaned.split("\n")
-            # Remove first line (```json) and last line (```)
             lines = [l for l in lines if not l.strip().startswith("```")]
             cleaned = "\n".join(lines).strip()
 
@@ -86,18 +67,8 @@ class BaseAgent(ABC):
             return json.loads(cleaned)
         except json.JSONDecodeError as e:
             logger.error(f"[{self.agent_name}] Failed to parse JSON: {e}\nRaw text:\n{text[:500]}")
-            # Return a fallback with the raw text
             return {"_raw_text": text, "_parse_error": str(e)}
 
     @abstractmethod
     async def execute(self, state: SharedState) -> SharedState:
-        """
-        Execute the agent's logic.
-        
-        Args:
-            state: The shared state to read from and write to.
-            
-        Returns:
-            The updated shared state.
-        """
         ...
