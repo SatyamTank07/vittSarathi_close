@@ -73,9 +73,48 @@ class SynthesizerAgent(BaseAgent):
             state.investment_verdict = "Neutral"
             state.confidence_level = "Low"
         else:
-            state.final_thesis = parsed.get("final_thesis", "No thesis generated.")
-            state.investment_verdict = parsed.get("investment_verdict", "Neutral")
-            state.confidence_level = parsed.get("confidence_level", "Low")
+            from src.agents.base.shared_state import SynthesizerOutput
+            try:
+                synth_out = SynthesizerOutput(**parsed)
+                state.synthesis = synth_out
+                state.investment_verdict = synth_out.investment_decision.final_rating
+                state.confidence_level = str(synth_out.investment_decision.conviction_score)
+                
+                # Format to markdown for frontend and db
+                md = f"## Executive Summary\n{synth_out.executive_summary}\n\n"
+                
+                if synth_out.conflict_resolution_log:
+                    md += "## Conflict Resolution\n"
+                    for c in synth_out.conflict_resolution_log:
+                        md += f"- **Conflict Identified**: {c.conflict_identified}\n"
+                        md += f"  - *Severity*: {c.severity}\n"
+                        md += f"  - *Resolution*: {c.synthesized_resolution}\n\n"
+                        
+                if synth_out.dynamic_investment_pillars:
+                    md += "## Dynamic Investment Pillars\n"
+                    for p_name, p_data in synth_out.dynamic_investment_pillars.items():
+                        title = p_name.replace('_', ' ').title()
+                        md += f"### {title}\n"
+                        md += f"**Thesis**: {p_data.thesis}\n\n"
+                        if p_data.supporting_metrics:
+                            md += "**Supporting Metrics**:\n"
+                            for m in p_data.supporting_metrics:
+                                md += f"- {m.metric}: {m.value} ({m.status})\n"
+                        md += "\n"
+                        
+                if synth_out.key_risk_dashboard:
+                    md += "## Key Risk Dashboard\n"
+                    for r_name, r_val in synth_out.key_risk_dashboard.items():
+                        title = r_name.replace('_', ' ').title()
+                        md += f"- **{title}**: {r_val}\n"
+                        
+                state.final_thesis = md
+                
+            except Exception as e:
+                logger.error(f"Failed to parse SynthesizerOutput: {e}")
+                state.final_thesis = "Synthesis succeeded but failed to parse structured output."
+                state.investment_verdict = parsed.get("investment_decision", {}).get("final_rating", "Neutral")
+                state.confidence_level = str(parsed.get("investment_decision", {}).get("conviction_score", "Low"))
 
         state.agent_statuses[self.agent_name] = "completed"
         logger.info(f"[{self.agent_name}] Verdict for {state.ticker}: {state.investment_verdict} ({state.confidence_level})")

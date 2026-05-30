@@ -135,7 +135,38 @@ class SharedState(BaseModel):
     final_thesis: str = ""
     investment_verdict: str = "Neutral"
     confidence_level: str = "Low"
+    synthesis: Optional['SynthesizerOutput'] = None
 
     # Tracking
     agent_statuses: Dict[str, str] = Field(default_factory=dict)
+
+class InvestmentDecision(BaseModel):
+    final_rating: str
+    conviction_score: float
+    target_horizon: str
+
+class ConflictResolution(BaseModel):
+    conflict_identified: str
+    severity: str
+    synthesized_resolution: str
+
+class PillarMetric(BaseModel):
+    metric: str
+    value: str
+    status: str
+
+class InvestmentPillar(BaseModel):
+    thesis: str
+    supporting_metrics: List[PillarMetric] = Field(default_factory=list)
+
+class SynthesizerOutput(BaseModel):
+    agent: str = "synthesizer_cio"
+    investment_decision: InvestmentDecision
+    executive_summary: str
+    conflict_resolution_log: List[ConflictResolution] = Field(default_factory=list)
+    dynamic_investment_pillars: Dict[str, InvestmentPillar] = Field(default_factory=dict)
+    key_risk_dashboard: Dict[str, str] = Field(default_factory=dict)
+    final_sign_off: bool = False
+
+SharedState.model_rebuild()
 
