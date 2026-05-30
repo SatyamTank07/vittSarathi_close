@@ -15,7 +15,18 @@ class QuantitativeAgent(BaseAgent):
 
     def _build_prompt(self, state: SharedState) -> str:
         data = state.stock_data
-        instructions = state.industry_instructions.get("quantitative_focus", "")
+
+        # ── Build dynamic instructions from task_allocations (preferred) or fallback ──
+        if state.task_allocations and state.task_allocations.agent_2_quantitative:
+            alloc = state.task_allocations.agent_2_quantitative
+            focus_lines = "\n".join(f"  - {m}" for m in alloc.focus_metrics)
+            instructions = (
+                f"FOCUS METRICS:\n{focus_lines}\n\n"
+                f"VALUATION METHODOLOGY: {alloc.valuation_methodology}\n\n"
+                f"HISTORICAL DEPTH: Analyze at least {alloc.historical_depth_years} years of data."
+            )
+        else:
+            instructions = state.industry_instructions.get("quantitative_focus", "")
 
         metrics = {
             "Company": state.company_name,
@@ -67,31 +78,28 @@ INDUSTRY-SPECIFIC FOCUS:
 Produce your quantitative analysis as a JSON object."""
 
     async def execute(self, state: SharedState) -> SharedState:
+        from langchain.agents import create_agent
+        
         state.agent_statuses[self.agent_name] = "running"
         logger.info(f"[{self.agent_name}] Analyzing {state.ticker}")
 
         prompt = self._build_prompt(state)
-        response_text = self._call_llm(self.system_prompt, prompt)
-        parsed = self._parse_json(response_text)
-
-        if "_parse_error" in parsed:
-            state.quantitative = QuantitativeOutput(
-                revenue_trend="Analysis completed — see raw text",
-                profit_margin_analysis=parsed.get("_raw_text", "")[:200],
-                valuation_assessment="JSON parse failed",
-                health_metrics="JSON parse failed",
-                sector_specific="JSON parse failed",
-                raw_ratios={},
-            )
-        else:
-            state.quantitative = QuantitativeOutput(
-                revenue_trend=parsed.get("revenue_trend", "N/A"),
-                profit_margin_analysis=parsed.get("profit_margin_analysis", "N/A"),
-                valuation_assessment=parsed.get("valuation_assessment", "N/A"),
-                health_metrics=parsed.get("health_metrics", "N/A"),
-                sector_specific=parsed.get("sector_specific", "N/A"),
-                raw_ratios=parsed.get("raw_ratios", {}),
-            )
+        
+        agent = create_agent(
+            model=self._get_llm(),
+            tools=[],
+            system_prompt=self.system_prompt,
+            response_format=QuantitativeOutput
+        )
+        
+        result = agent.invoke({"messages": [{"role": "user", "content": prompt}]})
+        
+        structured: QuantitativeOutput = result.get("structured_response")
+        
+        if not structured:
+            raise ValueError(f"[{self.agent_name}] Agent did not return a structured_response for '{state.ticker}'")
+            
+        state.quantitative = structured
 
         state.agent_statuses[self.agent_name] = "completed"
         logger.info(f"[{self.agent_name}] Done for {state.ticker}")

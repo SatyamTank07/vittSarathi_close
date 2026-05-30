@@ -6,6 +6,40 @@ from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
 
 
+# ─── Task Allocation Models (Orchestrator → Sub-Agents) ───
+
+class OrchestrationMeta(BaseModel):
+    ticker: str
+    company_name: str
+    sector: str
+    industry: str
+    routing_framework: str
+
+class QuantitativeAllocation(BaseModel):
+    focus_metrics: List[str] = Field(default_factory=list)
+    valuation_methodology: str = ""
+    historical_depth_years: int = 5
+
+class QualitativeAllocation(BaseModel):
+    rag_target_topics: List[str] = Field(default_factory=list)
+    competitive_moat_criteria: str = ""
+
+class RiskGovernanceAllocation(BaseModel):
+    risk_vectors_to_score: List[str] = Field(default_factory=list)
+    compliance_benchmarks: str = ""
+
+class TaskAllocations(BaseModel):
+    agent_2_quantitative: QuantitativeAllocation = Field(default_factory=QuantitativeAllocation)
+    agent_3_qualitative: QualitativeAllocation = Field(default_factory=QualitativeAllocation)
+    agent_4_risk_governance: RiskGovernanceAllocation = Field(default_factory=RiskGovernanceAllocation)
+
+class OrchestratorOutput(BaseModel):
+    orchestration_meta: OrchestrationMeta
+    task_allocations: TaskAllocations
+
+
+# ─── Agent Output Models ───
+
 class QuantitativeOutput(BaseModel):
     revenue_trend: str
     profit_margin_analysis: str
@@ -41,8 +75,12 @@ class SharedState(BaseModel):
     currency: str
     current_price: Optional[float] = None
     summary: str = ""
+    routing_framework: str = ""
     industry_instructions: Dict[str, str] = Field(default_factory=dict)
     stock_data: Dict[str, Any] = Field(default_factory=dict)
+
+    # ─── Orchestrator Task Allocations ───
+    task_allocations: Optional[TaskAllocations] = None
 
     # ─── Agent Outputs ───
     quantitative: Optional[QuantitativeOutput] = None
@@ -56,3 +94,4 @@ class SharedState(BaseModel):
 
     # Tracking
     agent_statuses: Dict[str, str] = Field(default_factory=dict)
+

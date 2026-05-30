@@ -15,7 +15,17 @@ class QualitativeAgent(BaseAgent):
 
     def _build_prompt(self, state: SharedState) -> str:
         data = state.stock_data
-        instructions = state.industry_instructions.get("qualitative_focus", "")
+
+        # ── Build dynamic instructions from task_allocations (preferred) or fallback ──
+        if state.task_allocations and state.task_allocations.agent_3_qualitative:
+            alloc = state.task_allocations.agent_3_qualitative
+            topic_lines = "\n".join(f"  - {t}" for t in alloc.rag_target_topics)
+            instructions = (
+                f"RAG TARGET TOPICS:\n{topic_lines}\n\n"
+                f"COMPETITIVE MOAT CRITERIA: {alloc.competitive_moat_criteria}"
+            )
+        else:
+            instructions = state.industry_instructions.get("qualitative_focus", "")
 
         context = {
             "Company": state.company_name,
@@ -48,29 +58,28 @@ INDUSTRY-SPECIFIC FOCUS:
 Produce your qualitative business assessment as a JSON object."""
 
     async def execute(self, state: SharedState) -> SharedState:
+        from langchain.agents import create_agent
+
         state.agent_statuses[self.agent_name] = "running"
         logger.info(f"[{self.agent_name}] Analyzing {state.ticker}")
 
         prompt = self._build_prompt(state)
-        response_text = self._call_llm(self.system_prompt, prompt)
-        parsed = self._parse_json(response_text)
 
-        if "_parse_error" in parsed:
-            state.qualitative = QualitativeOutput(
-                moat_analysis="Analysis completed — see raw text",
-                management_quality=parsed.get("_raw_text", "")[:200],
-                growth_catalysts="JSON parse failed",
-                business_model="JSON parse failed",
-                narrative_explanation="JSON parse failed",
-            )
-        else:
-            state.qualitative = QualitativeOutput(
-                moat_analysis=parsed.get("moat_analysis", "N/A"),
-                management_quality=parsed.get("management_quality", "N/A"),
-                growth_catalysts=parsed.get("growth_catalysts", "N/A"),
-                business_model=parsed.get("business_model", "N/A"),
-                narrative_explanation=parsed.get("narrative_explanation", "N/A"),
-            )
+        agent = create_agent(
+            model=self._get_llm(),
+            tools=[],
+            system_prompt=self.system_prompt,
+            response_format=QualitativeOutput
+        )
+
+        result = agent.invoke({"messages": [{"role": "user", "content": prompt}]})
+        
+        structured: QualitativeOutput = result.get("structured_response")
+        
+        if not structured:
+            raise ValueError(f"[{self.agent_name}] Agent did not return a structured_response for '{state.ticker}'")
+            
+        state.qualitative = structured
 
         state.agent_statuses[self.agent_name] = "completed"
         logger.info(f"[{self.agent_name}] Done for {state.ticker}")

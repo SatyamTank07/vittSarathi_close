@@ -15,7 +15,17 @@ class RiskGovernanceAgent(BaseAgent):
 
     def _build_prompt(self, state: SharedState) -> str:
         data = state.stock_data
-        instructions = state.industry_instructions.get("risk_focus", "")
+
+        # ── Build dynamic instructions from task_allocations (preferred) or fallback ──
+        if state.task_allocations and state.task_allocations.agent_4_risk_governance:
+            alloc = state.task_allocations.agent_4_risk_governance
+            risk_lines = "\n".join(f"  - {r}" for r in alloc.risk_vectors_to_score)
+            instructions = (
+                f"RISK VECTORS TO SCORE:\n{risk_lines}\n\n"
+                f"COMPLIANCE BENCHMARKS: {alloc.compliance_benchmarks}"
+            )
+        else:
+            instructions = state.industry_instructions.get("risk_focus", "")
 
         risk_data = {
             "Company": state.company_name,
@@ -61,33 +71,28 @@ INDUSTRY-SPECIFIC RISK FOCUS:
 Produce your risk assessment as a JSON object. Be thorough and skeptical."""
 
     async def execute(self, state: SharedState) -> SharedState:
+        from langchain.agents import create_agent
+
         state.agent_statuses[self.agent_name] = "running"
         logger.info(f"[{self.agent_name}] Investigating {state.ticker}")
 
         prompt = self._build_prompt(state)
-        response_text = self._call_llm(self.system_prompt, prompt)
-        parsed = self._parse_json(response_text)
 
-        if "_parse_error" in parsed:
-            state.risk_governance = RiskGovernanceOutput(
-                red_flags=["Analysis produced unstructured output — manual review needed"],
-                governance_score="moderate",
-                structural_risks=parsed.get("_raw_text", "")[:200],
-                insider_activity="JSON parse failed",
-                overall_risk_level="medium",
-            )
-        else:
-            red_flags = parsed.get("red_flags", [])
-            if isinstance(red_flags, str):
-                red_flags = [red_flags]
+        agent = create_agent(
+            model=self._get_llm(),
+            tools=[],
+            system_prompt=self.system_prompt,
+            response_format=RiskGovernanceOutput
+        )
 
-            state.risk_governance = RiskGovernanceOutput(
-                red_flags=red_flags,
-                governance_score=parsed.get("governance_score", "moderate"),
-                structural_risks=parsed.get("structural_risks", "N/A"),
-                insider_activity=parsed.get("insider_activity", "N/A"),
-                overall_risk_level=parsed.get("overall_risk_level", "medium"),
-            )
+        result = agent.invoke({"messages": [{"role": "user", "content": prompt}]})
+        
+        structured: RiskGovernanceOutput = result.get("structured_response")
+        
+        if not structured:
+            raise ValueError(f"[{self.agent_name}] Agent did not return a structured_response for '{state.ticker}'")
+            
+        state.risk_governance = structured
 
         state.agent_statuses[self.agent_name] = "completed"
         logger.info(f"[{self.agent_name}] Done for {state.ticker}")
