@@ -63,11 +63,19 @@ class QualitativeOutput(BaseModel):
     narrative_explanation: str
 
 class RiskGovernanceOutput(BaseModel):
-    red_flags: List[str] = Field(default_factory=list)
-    governance_score: str
-    structural_risks: str
-    insider_activity: str
-    overall_risk_level: str
+    industry_framework_used: str = Field(
+        description="The specific industry framework applied (e.g., 'Banking', 'Tech', 'Energy')"
+    )
+    analysis_blocks: Dict[str, str] = Field(
+        description="Dynamic key-value pairs. Keys are the specific risk factors analyzed (e.g., 'Promoter Pledging & RPT', 'Auditor & Board Independence'). Values are the detailed analysis."
+    )
+    raw_metrics: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="The raw numerical data, ML scores, and nested flags fetched from the tools."
+    )
+    overall_governance_health: str = Field(
+        description="A short concluding summary by the Internal Investigator regarding structural risks."
+    )
 
 
 class SharedState(BaseModel):

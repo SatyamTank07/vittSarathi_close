@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from src.agents.orchestrator.agent import orchestrator
 from src.agents.quantitative.agent import quantitative_agent
 from src.agents.qualitative.agent import qualitative_agent
-from src.agents.risk.agent import risk_agent
+from src.agents.risk_and_governance.agent import risk_agent
 from src.agents.synthesizer.agent import synthesizer
 from src.agents.base.shared_state import SharedState
 

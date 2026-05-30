@@ -1,7 +1,7 @@
 from pathlib import Path
 
 current_dir = Path(__file__).parent
-prompt_path = current_dir / "prompt.jinja2"
+prompt_path = current_dir / "system_prompt.jinja2"
 
 with open(prompt_path, "r", encoding="utf-8") as f:
     system_prompt = f.read()

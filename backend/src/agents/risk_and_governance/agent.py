@@ -72,20 +72,33 @@ Produce your risk assessment as a JSON object. Be thorough and skeptical."""
 
     async def execute(self, state: SharedState) -> SharedState:
         from langchain.agents import create_agent
+        from mcp import StdioServerParameters
+        from mcp.client.stdio import stdio_client
+        from langchain_mcp_adapters.client import MultiServerMCPClient
 
         state.agent_statuses[self.agent_name] = "running"
         logger.info(f"[{self.agent_name}] Investigating {state.ticker}")
 
         prompt = self._build_prompt(state)
 
-        agent = create_agent(
-            model=self._get_llm(),
-            tools=[],
-            system_prompt=self.system_prompt,
-            response_format=RiskGovernanceOutput
+        server_params = StdioServerParameters(
+            command="python",
+            args=["src/mcp/risk_and_governance.py"]
         )
+        
+        async with stdio_client(server_params) as (read, write):
+            async with MultiServerMCPClient() as client:
+                await client.connect_to_server("risk", read=read, write=write)
+                mcp_tools = await client.get_tools()
+                
+                agent = create_agent(
+                    model=self._get_llm(),
+                    tools=mcp_tools,
+                    system_prompt=self.system_prompt,
+                    response_format=RiskGovernanceOutput
+                )
 
-        result = agent.invoke({"messages": [{"role": "user", "content": prompt}]})
+                result = await agent.ainvoke({"messages": [{"role": "user", "content": prompt}]})
         
         structured: RiskGovernanceOutput = result.get("structured_response")
         
