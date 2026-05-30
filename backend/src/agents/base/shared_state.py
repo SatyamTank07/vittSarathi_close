@@ -28,10 +28,15 @@ class RiskGovernanceAllocation(BaseModel):
     risk_vectors_to_score: List[str] = Field(default_factory=list)
     compliance_benchmarks: str = ""
 
+class SentimentAllocation(BaseModel):
+    macro_themes: List[str] = Field(default_factory=list)
+    news_focus: str = ""
+
 class TaskAllocations(BaseModel):
     agent_2_quantitative: QuantitativeAllocation = Field(default_factory=QuantitativeAllocation)
     agent_3_qualitative: QualitativeAllocation = Field(default_factory=QualitativeAllocation)
     agent_4_risk_governance: RiskGovernanceAllocation = Field(default_factory=RiskGovernanceAllocation)
+    agent_5_sentiment: SentimentAllocation = Field(default_factory=SentimentAllocation)
 
 class OrchestratorOutput(BaseModel):
     orchestration_meta: OrchestrationMeta
@@ -77,6 +82,29 @@ class RiskGovernanceOutput(BaseModel):
         description="A short concluding summary by the Internal Investigator regarding structural risks."
     )
 
+class MarketSentiment(BaseModel):
+    overall_mood: str = Field(description="E.g., Positive, Neutral, Negative")
+    finbert_score_breakdown: Dict[str, int] = Field(
+        default_factory=dict,
+        description="Optional breakdown of sentiment percentages, e.g., {'positive': 72, 'negative': 15, 'neutral': 13}"
+    )
+    dominant_news_themes: List[str] = Field(default_factory=list)
+
+class MacroeconomicEnvironment(BaseModel):
+    source: str = Field(default="Various APIs")
+    metrics: Dict[str, Dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Dynamic dictionary. Keys are metric names (e.g. 'inflation'), values are dicts with 'current_value', 'trend', and 'business_impact'."
+    )
+
+class SectorFactors(BaseModel):
+    tailwinds: List[str] = Field(default_factory=list, description="List of positive dynamic tailwinds for this sector")
+    headwinds: List[str] = Field(default_factory=list, description="List of negative dynamic headwinds for this sector")
+
+class SentimentOutput(BaseModel):
+    market_sentiment: MarketSentiment
+    macroeconomic_environment: MacroeconomicEnvironment
+    sector_factors: SectorFactors
 
 class SharedState(BaseModel):
     """
@@ -101,6 +129,7 @@ class SharedState(BaseModel):
     quantitative: Optional[QuantitativeOutput] = None
     qualitative: Optional[QualitativeOutput] = None
     risk_governance: Optional[RiskGovernanceOutput] = None
+    sentiment: Optional[SentimentOutput] = None
 
     # ─── Final Synthesis ───
     final_thesis: str = ""
