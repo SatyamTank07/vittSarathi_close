@@ -1,4 +1,8 @@
 import logging
+import asyncio
+from mcp import StdioServerParameters
+from mcp.client.stdio import stdio_client
+from langchain_mcp_adapters.client import MultiServerMCPClient
 from src.agents.base.base_agent import BaseAgent
 from src.agents.base.shared_state import SharedState, QuantitativeOutput
 from .config import QuantitativeConfig
@@ -85,14 +89,26 @@ Produce your quantitative analysis as a JSON object."""
 
         prompt = self._build_prompt(state)
         
-        agent = create_agent(
-            model=self._get_llm(),
-            tools=[],
-            system_prompt=self.system_prompt,
-            response_format=QuantitativeOutput
+        # Connect to MCP server via stdio
+        server_params = StdioServerParameters(
+            command="python",
+            args=["src/mcp/fmp_server.py"]
         )
         
-        result = agent.invoke({"messages": [{"role": "user", "content": prompt}]})
+        async with stdio_client(server_params) as (read, write):
+            async with MultiServerMCPClient() as client:
+                await client.connect_to_server("fmp", read=read, write=write)
+                mcp_tools = await client.get_tools()
+                
+                agent = create_agent(
+                    model=self._get_llm(),
+                    tools=mcp_tools,
+                    system_prompt=self.system_prompt,
+                    response_format=QuantitativeOutput
+                )
+                
+                # Using ainvoke to properly support async MCP tools within the active connection
+                result = await agent.ainvoke({"messages": [{"role": "user", "content": prompt}]})
         
         structured: QuantitativeOutput = result.get("structured_response")
         

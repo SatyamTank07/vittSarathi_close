@@ -41,12 +41,19 @@ class OrchestratorOutput(BaseModel):
 # ─── Agent Output Models ───
 
 class QuantitativeOutput(BaseModel):
-    revenue_trend: str
-    profit_margin_analysis: str
-    valuation_assessment: str
-    health_metrics: str
-    sector_specific: str
-    raw_ratios: Dict[str, Any] = Field(default_factory=dict)
+    industry_framework_used: str = Field(
+        description="The specific industry framework applied (e.g., 'SaaS', 'Banking', 'Energy')"
+    )
+    analysis_blocks: Dict[str, str] = Field(
+        description="Dynamic key-value pairs. Keys are the specific metrics analyzed (e.g., 'Net Interest Margin', 'ARPU Growth', 'Gross Refining Margin'). Values are the detailed analysis."
+    )
+    raw_ratios: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="The raw numerical data fetched from the tools to back up the analysis."
+    )
+    overall_quantitative_health: str = Field(
+        description="A short concluding summary of the quantitative health of the company."
+    )
 
 class QualitativeOutput(BaseModel):
     moat_analysis: str
