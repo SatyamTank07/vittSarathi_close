@@ -54,8 +54,17 @@ class SynthesizerAgent(BaseAgent):
             sections.append(f"Overall Risk Level: {r.overall_risk_level}")
             sections.append("")
 
+        if state.sentiment:
+            s = state.sentiment
+            sections.append("═══ SENTIMENT & MACRO (Agent 5) ═══")
+            sections.append(f"Overall Mood: {s.market_sentiment.overall_mood}")
+            sections.append(f"Themes: {', '.join(s.market_sentiment.dominant_news_themes)}")
+            sections.append(f"Sector Tailwinds: {', '.join(s.sector_factors.tailwinds)}")
+            sections.append(f"Sector Headwinds: {', '.join(s.sector_factors.headwinds)}")
+            sections.append("")
+
         sections.append("═══ YOUR TASK ═══")
-        sections.append("Synthesize the above three reports into a cohesive investment thesis.")
+        sections.append("Synthesize the above reports into a cohesive investment thesis.")
         sections.append("Resolve any contradictions between the reports.")
         sections.append("Produce your final assessment as a JSON object.")
 

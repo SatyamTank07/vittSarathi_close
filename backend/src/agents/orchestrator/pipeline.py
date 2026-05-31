@@ -7,6 +7,7 @@ from src.agents.orchestrator.agent import orchestrator
 from src.agents.quantitative.agent import quantitative_agent
 from src.agents.qualitative.agent import qualitative_agent
 from src.agents.risk_and_governance.agent import risk_agent
+from src.agents.sentiment_and_macro_analyst.agent import sentiment_and_macro_agent
 from src.agents.synthesizer.agent import synthesizer
 from src.agents.base.shared_state import SharedState
 
@@ -27,6 +28,7 @@ async def run_analysis(user_query: str) -> dict:
     quant_state_copy = state.model_copy(deep=True)
     qual_state_copy = state.model_copy(deep=True)
     risk_state_copy = state.model_copy(deep=True)
+    sentiment_state_copy = state.model_copy(deep=True)
 
     tasks = []
     agent_map = []
@@ -42,6 +44,10 @@ async def run_analysis(user_query: str) -> dict:
     if state.task_allocations.agent_4_risk_governance.should_run:
         tasks.append(risk_agent.execute(risk_state_copy))
         agent_map.append("risk_governance")
+        
+    if state.task_allocations.agent_5_sentiment.should_run:
+        tasks.append(sentiment_and_macro_agent.execute(sentiment_state_copy))
+        agent_map.append("sentiment")
 
     if tasks:
         results = await asyncio.gather(*tasks)
@@ -53,6 +59,8 @@ async def run_analysis(user_query: str) -> dict:
                 state.qualitative = result_state.qualitative
             elif agent_name == "risk_governance":
                 state.risk_governance = result_state.risk_governance
+            elif agent_name == "sentiment":
+                state.sentiment = result_state.sentiment
                 
             state.agent_statuses[agent_name] = result_state.agent_statuses.get(agent_name, "completed")
     
@@ -84,6 +92,7 @@ async def run_analysis(user_query: str) -> dict:
         "quantitative": state.quantitative.model_dump() if state.quantitative else None,
         "qualitative": state.qualitative.model_dump() if state.qualitative else None,
         "risk_governance": state.risk_governance.model_dump() if state.risk_governance else None,
+        "sentiment": state.sentiment.model_dump() if state.sentiment else None,
         "agent_statuses": state.agent_statuses,
         "analysis_duration_seconds": round(elapsed, 1),
         "shared_state_json": state.model_dump_json(),
