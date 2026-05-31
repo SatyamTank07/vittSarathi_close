@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from src.core.database.connection import engine
 from src.core.database import models
-from src.api.routes import stock_routes, report_routes
+from src.api.routes import stock_routes, report_routes, document_routes
 
 # Configure logging
 logging.basicConfig(
@@ -38,3 +38,4 @@ def read_root():
 
 app.include_router(stock_routes.router)
 app.include_router(report_routes.router)
+app.include_router(document_routes.router)
