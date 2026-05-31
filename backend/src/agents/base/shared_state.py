@@ -1,0 +1,178 @@
+"""
+Shared State — Central data structures passed between agents.
+"""
+
+from typing import Optional, Dict, Any, List
+from pydantic import BaseModel, Field
+
+
+# ─── Task Allocation Models (Orchestrator → Sub-Agents) ───
+
+class OrchestrationMeta(BaseModel):
+    ticker: str
+    company_name: str
+    sector: str
+    industry: str
+    routing_framework: str
+
+class QuantitativeAllocation(BaseModel):
+    should_run: bool = False
+    focus_metrics: List[str] = Field(default_factory=list)
+    valuation_methodology: str = ""
+    historical_depth_years: int = 5
+
+class QualitativeAllocation(BaseModel):
+    should_run: bool = False
+    rag_target_topics: List[str] = Field(default_factory=list)
+    competitive_moat_criteria: str = ""
+
+class RiskGovernanceAllocation(BaseModel):
+    should_run: bool = False
+    risk_vectors_to_score: List[str] = Field(default_factory=list)
+    compliance_benchmarks: str = ""
+
+class SentimentAllocation(BaseModel):
+    should_run: bool = False
+    macro_themes: List[str] = Field(default_factory=list)
+    news_focus: str = ""
+
+class TaskAllocations(BaseModel):
+    agent_2_quantitative: QuantitativeAllocation = Field(default_factory=QuantitativeAllocation)
+    agent_3_qualitative: QualitativeAllocation = Field(default_factory=QualitativeAllocation)
+    agent_4_risk_governance: RiskGovernanceAllocation = Field(default_factory=RiskGovernanceAllocation)
+    agent_5_sentiment: SentimentAllocation = Field(default_factory=SentimentAllocation)
+
+class OrchestratorOutput(BaseModel):
+    orchestration_meta: OrchestrationMeta
+    task_allocations: TaskAllocations
+
+
+# ─── Agent Output Models ───
+
+class QuantitativeOutput(BaseModel):
+    industry_framework_used: str = Field(
+        description="The specific industry framework applied (e.g., 'SaaS', 'Banking', 'Energy')"
+    )
+    analysis_blocks: Dict[str, str] = Field(
+        description="Dynamic key-value pairs. Keys are the specific metrics analyzed (e.g., 'Net Interest Margin', 'ARPU Growth', 'Gross Refining Margin'). Values are the detailed analysis."
+    )
+    raw_ratios: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="The raw numerical data fetched from the tools to back up the analysis."
+    )
+    overall_quantitative_health: str = Field(
+        description="A short concluding summary of the quantitative health of the company."
+    )
+
+class QualitativeOutput(BaseModel):
+    moat_analysis: str
+    management_quality: str
+    growth_catalysts: str
+    business_model: str
+    narrative_explanation: str
+
+class RiskGovernanceOutput(BaseModel):
+    industry_framework_used: str = Field(
+        description="The specific industry framework applied (e.g., 'Banking', 'Tech', 'Energy')"
+    )
+    analysis_blocks: Dict[str, str] = Field(
+        description="Dynamic key-value pairs. Keys are the specific risk factors analyzed (e.g., 'Promoter Pledging & RPT', 'Auditor & Board Independence'). Values are the detailed analysis."
+    )
+    raw_metrics: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="The raw numerical data, ML scores, and nested flags fetched from the tools."
+    )
+    overall_governance_health: str = Field(
+        description="A short concluding summary by the Internal Investigator regarding structural risks."
+    )
+
+class MarketSentiment(BaseModel):
+    overall_mood: str = Field(description="E.g., Positive, Neutral, Negative")
+    finbert_score_breakdown: Dict[str, int] = Field(
+        default_factory=dict,
+        description="Optional breakdown of sentiment percentages, e.g., {'positive': 72, 'negative': 15, 'neutral': 13}"
+    )
+    dominant_news_themes: List[str] = Field(default_factory=list)
+
+class MacroeconomicEnvironment(BaseModel):
+    source: str = Field(default="Various APIs")
+    metrics: Dict[str, Dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Dynamic dictionary. Keys are metric names (e.g. 'inflation'), values are dicts with 'current_value', 'trend', and 'business_impact'."
+    )
+
+class SectorFactors(BaseModel):
+    tailwinds: List[str] = Field(default_factory=list, description="List of positive dynamic tailwinds for this sector")
+    headwinds: List[str] = Field(default_factory=list, description="List of negative dynamic headwinds for this sector")
+
+class SentimentOutput(BaseModel):
+    market_sentiment: MarketSentiment
+    macroeconomic_environment: MacroeconomicEnvironment
+    sector_factors: SectorFactors
+
+class SharedState(BaseModel):
+    """
+    The master state object that holds all context and results for a single analysis run.
+    """
+    # ─── Orchestrator Inputs (Context) ───
+    user_query: Optional[str] = None
+    ticker: str
+    company_name: str
+    industry: str
+    sector: str
+    currency: str
+    current_price: Optional[float] = None
+    summary: str = ""
+    routing_framework: str = ""
+    industry_instructions: Dict[str, str] = Field(default_factory=dict)
+    stock_data: Dict[str, Any] = Field(default_factory=dict)
+
+    # ─── Orchestrator Task Allocations ───
+    task_allocations: Optional[TaskAllocations] = None
+
+    # ─── Agent Outputs ───
+    quantitative: Optional[QuantitativeOutput] = None
+    qualitative: Optional[QualitativeOutput] = None
+    risk_governance: Optional[RiskGovernanceOutput] = None
+    sentiment: Optional[SentimentOutput] = None
+
+    # ─── Final Synthesis ───
+    final_thesis: str = ""
+    investment_verdict: str = "Neutral"
+    confidence_level: str = "Low"
+    synthesis: Optional['SynthesizerOutput'] = None
+
+    # Tracking
+    agent_statuses: Dict[str, str] = Field(default_factory=dict)
+
+class InvestmentDecision(BaseModel):
+    final_rating: str
+    conviction_score: float
+    target_horizon: str
+
+class ConflictResolution(BaseModel):
+    conflict_identified: str
+    severity: str
+    synthesized_resolution: str
+
+class PillarMetric(BaseModel):
+    metric: str
+    value: str
+    status: str
+
+class InvestmentPillar(BaseModel):
+    thesis: str
+    supporting_metrics: List[PillarMetric] = Field(default_factory=list)
+
+class SynthesizerOutput(BaseModel):
+    agent: str = "synthesizer_cio"
+    targeted_answer: Optional[str] = Field(default=None, description="Populated for highly specific user queries instead of a full investment decision")
+    investment_decision: Optional[InvestmentDecision] = None
+    executive_summary: str
+    conflict_resolution_log: List[ConflictResolution] = Field(default_factory=list)
+    dynamic_investment_pillars: Optional[Dict[str, InvestmentPillar]] = Field(default_factory=dict)
+    key_risk_dashboard: Optional[Dict[str, str]] = Field(default_factory=dict)
+    final_sign_off: bool = False
+
+SharedState.model_rebuild()
+

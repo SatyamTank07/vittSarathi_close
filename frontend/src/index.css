@@ -1,29 +1,36 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap');
+
 :root {
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-heading: 'Outfit', var(--font-sans);
-  
-  /* Color Palette - Simple Purple Theme */
-  --bg-deep: #ffffff;
-  --bg-card: #ffffff;
-  --bg-card-hover: #faf5ff;
-  --border: #d8b4fe;
-  --border-focus: #9333ea;
-  
-  --primary: #9333ea;
-  --secondary: #a855f7;
-  --tertiary: #c084fc;
-  
-  --text-main: #111827;
-  --text-muted: #4b5563;
+
+  /* Balanced Dark Slate + Green Accent */
+  --bg-deep: #111318;
+  --bg-card: #1a1d24;
+  --bg-card-hover: #22262e;
+  --border: #2a2e38;
+  --border-focus: #22c55e;
+
+  --primary: #22c55e;
+  --secondary: #4ade80;
+  --tertiary: #86efac;
+
+  --text-main: #e4e7ec;
+  --text-muted: #9ca3af;
   --text-dim: #6b7280;
-  
-  --shadow-sm: none;
-  --shadow-md: none;
-  --shadow-lg: none;
-  
-  --glass-bg: #ffffff;
-  --glass-border: #d8b4fe;
-  
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
+
+  --glass-bg: rgba(26, 29, 36, 0.92);
+  --glass-border: rgba(42, 46, 56, 0.8);
+
+  --highlight-glow: rgba(34, 197, 94, 0.18);
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --success: #22c55e;
+
   box-sizing: border-box;
 }
 
@@ -46,28 +53,14 @@ body {
   position: relative;
   z-index: 1;
   width: 100%;
-  max-width: 1280px;
+  max-width: 1400px;
   margin: 0 auto;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
 }
 
-/* Scrollbar Styling */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--bg-deep);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--border-focus);
-}
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-deep); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }

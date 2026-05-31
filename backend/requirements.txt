@@ -8,3 +8,8 @@ sqlalchemy>=2.0.29
 psycopg2-binary>=2.9.9
 langchain>=0.1.16
 langchain-openai>=0.1.1
+mcp>=1.0.0
+langchain-mcp-adapters>=0.1.0
+pnsea
+bseindia
+PyPDF2>=3.0.0

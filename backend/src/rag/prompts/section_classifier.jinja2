@@ -1,0 +1,42 @@
+You are an expert financial document analyst specializing in Indian annual and quarterly reports.
+
+Given the following extracted content from pages {{ page_start }} to {{ page_end }} of a financial report,
+classify this section into exactly ONE of these section types:
+
+{{ section_types }}
+
+Rules:
+1. Choose the MOST SPECIFIC type that applies.
+2. "balance_sheet" = Statement of Assets and Liabilities, Balance Sheet.
+3. "profit_loss" = Statement of Profit and Loss, Income Statement, P&L.
+4. "cash_flow" = Cash Flow Statement, Statement of Cash Flows.
+5. "schedule" = Schedules forming part of financial statements (Schedule A, Schedule V, etc.).
+6. "note_to_accounts" = Notes to Financial Statements, Notes forming part of accounts (Note 1, Note 2, etc.).
+7. "directors_report" = Board's Report, Directors' Report, Report of the Board of Directors.
+8. "mda" = Management Discussion and Analysis, MD&A, Business Overview with analysis.
+9. "auditors_report" = Independent Auditor's Report, Audit Report, CARO Report.
+10. "management_profile" = Profile of Directors, Key Managerial Personnel, Board of Directors listing.
+11. "vision_mission" = Corporate Vision, Mission Statement, Chairman's Message, Letter to Shareholders.
+12. "risk_factors" = Risk Management, Principal Risks and Uncertainties.
+13. "shareholders_info" = Shareholding Pattern, Dividend History, AGM details.
+14. "corporate_governance" = Corporate Governance Report, Code of Conduct, Committee Reports.
+15. "standalone_financials" = Standalone Financial Statements (when explicitly labeled standalone).
+16. "consolidated_financials" = Consolidated Financial Statements (when explicitly labeled consolidated).
+17. "other" = Use ONLY if none of the above categories fit.
+
+Also extract the hierarchical section path. Examples:
+- ["Financial Statements", "Consolidated Balance Sheet"]
+- ["Notes to Financial Statements", "Note 5: Property, Plant and Equipment"]
+- ["Directors' Report"]
+- ["Management Discussion and Analysis", "Industry Overview"]
+
+Determine the content_type:
+- "table" = Section is primarily tabular data (financial statements, schedules)
+- "text" = Section is primarily narrative text (reports, discussions)
+- "mixed" = Section contains both significant tables and narrative text
+
+Content (first 3000 characters):
+{{ content_preview }}
+
+Respond with valid JSON only:
+{"section_type": "...", "section_path": ["...", "..."], "content_type": "table|text|mixed"}
