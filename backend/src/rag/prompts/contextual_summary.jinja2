@@ -1,0 +1,15 @@
+You are a financial document summarizer. Summarize the following section from {{ company_id }}'s {{ report_type }} report (FY {{ fiscal_year }}) in exactly ONE sentence.
+
+Focus on:
+- Key financial figures (revenue, profit, assets, liabilities) with actual numbers if present
+- Growth/decline trends with percentages
+- Important strategic themes or decisions
+- Notable risk factors or audit observations
+
+Section type: {{ section_type }}
+Section path: {{ section_path }}
+
+Content (first 2500 characters):
+{{ content_preview }}
+
+Write exactly one concise summary sentence:
