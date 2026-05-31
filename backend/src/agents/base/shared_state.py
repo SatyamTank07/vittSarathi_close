@@ -16,19 +16,23 @@ class OrchestrationMeta(BaseModel):
     routing_framework: str
 
 class QuantitativeAllocation(BaseModel):
+    should_run: bool = False
     focus_metrics: List[str] = Field(default_factory=list)
     valuation_methodology: str = ""
     historical_depth_years: int = 5
 
 class QualitativeAllocation(BaseModel):
+    should_run: bool = False
     rag_target_topics: List[str] = Field(default_factory=list)
     competitive_moat_criteria: str = ""
 
 class RiskGovernanceAllocation(BaseModel):
+    should_run: bool = False
     risk_vectors_to_score: List[str] = Field(default_factory=list)
     compliance_benchmarks: str = ""
 
 class SentimentAllocation(BaseModel):
+    should_run: bool = False
     macro_themes: List[str] = Field(default_factory=list)
     news_focus: str = ""
 
@@ -111,6 +115,7 @@ class SharedState(BaseModel):
     The master state object that holds all context and results for a single analysis run.
     """
     # ─── Orchestrator Inputs (Context) ───
+    user_query: Optional[str] = None
     ticker: str
     company_name: str
     industry: str
@@ -161,11 +166,12 @@ class InvestmentPillar(BaseModel):
 
 class SynthesizerOutput(BaseModel):
     agent: str = "synthesizer_cio"
-    investment_decision: InvestmentDecision
+    targeted_answer: Optional[str] = Field(default=None, description="Populated for highly specific user queries instead of a full investment decision")
+    investment_decision: Optional[InvestmentDecision] = None
     executive_summary: str
     conflict_resolution_log: List[ConflictResolution] = Field(default_factory=list)
-    dynamic_investment_pillars: Dict[str, InvestmentPillar] = Field(default_factory=dict)
-    key_risk_dashboard: Dict[str, str] = Field(default_factory=dict)
+    dynamic_investment_pillars: Optional[Dict[str, InvestmentPillar]] = Field(default_factory=dict)
+    key_risk_dashboard: Optional[Dict[str, str]] = Field(default_factory=dict)
     final_sign_off: bool = False
 
 SharedState.model_rebuild()

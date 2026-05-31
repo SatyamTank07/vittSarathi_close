@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 import yfinance as yf
 import traceback
 import logging
+from pydantic import BaseModel
 
 from src.core.database.connection import get_db
 from src.agents.orchestrator.pipeline import run_analysis, save_report_to_db
@@ -106,13 +107,16 @@ def get_stock_data(ticker: str):
     return payload
 
 
-@router.post("/analyze/{ticker}")
-async def analyze_stock(ticker: str, db: Session = Depends(get_db)):
+class AnalyzeRequest(BaseModel):
+    query: str
+
+@router.post("/analyze")
+async def analyze_stock(request: AnalyzeRequest, db: Session = Depends(get_db)):
     """
-    Run the full multi-agent fundamental analysis pipeline.
+    Run the full multi-agent fundamental analysis pipeline dynamically.
     """
     try:
-        result = await run_analysis(ticker)
+        result = await run_analysis(request.query)
 
         # Save to database
         report_id = save_report_to_db(db, result)

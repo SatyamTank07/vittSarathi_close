@@ -19,16 +19,16 @@ class OrchestratorAgent(BaseAgent):
         self.system_prompt = self.config["system_prompt"]
         self.tools = self.config.get("tools", [])
 
-    async def execute(self, state: SharedState = None, ticker: str = None) -> SharedState:
-        if not ticker:
-            raise ValueError("Orchestrator requires a ticker symbol.")
+    async def execute(self, state: SharedState = None, user_query: str = None) -> SharedState:
+        if not user_query:
+            raise ValueError("Orchestrator requires a user_query.")
 
-        logger.info(f"[{self.agent_name}] Starting analysis for {ticker}")
+        logger.info(f"[{self.agent_name}] Starting analysis for query: {user_query}")
 
         user_prompt = (
-            f"Perform a fundamental analysis triage for the ticker: {ticker}\n\n"
-            f"Use the get_company_profile tool to fetch the company's profile, "
-            f"then produce the structured task allocation JSON based on the sector mapping logic."
+            f"Analyze the following User Query: '{user_query}'\n\n"
+            f"1. Extract the company name and use the get_company_profile tool to fetch its profile.\n"
+            f"2. Produce the structured task allocation JSON. Set should_run = true ONLY for agents needed to answer the query."
         )
 
         # Create the LangChain agent with our tools and desired structured output
@@ -57,6 +57,7 @@ class OrchestratorAgent(BaseAgent):
         )
 
         state = SharedState(
+            user_query=user_query,
             ticker=meta.ticker,
             company_name=meta.company_name,
             industry=meta.industry,

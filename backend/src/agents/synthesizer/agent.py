@@ -16,6 +16,7 @@ class SynthesizerAgent(BaseAgent):
     def _build_prompt(self, state: SharedState) -> str:
         sections = []
 
+        sections.append(f"USER QUERY: '{state.user_query}'")
         sections.append(f"COMPANY: {state.company_name} ({state.ticker})")
         sections.append(f"SECTOR: {state.sector} | INDUSTRY: {state.industry}")
         sections.append(f"PRICE: {state.currency} {state.current_price}")
@@ -77,11 +78,20 @@ class SynthesizerAgent(BaseAgent):
             try:
                 synth_out = SynthesizerOutput(**parsed)
                 state.synthesis = synth_out
-                state.investment_verdict = synth_out.investment_decision.final_rating
-                state.confidence_level = str(synth_out.investment_decision.conviction_score)
+                
+                if synth_out.investment_decision:
+                    state.investment_verdict = synth_out.investment_decision.final_rating
+                    state.confidence_level = str(synth_out.investment_decision.conviction_score)
+                else:
+                    state.investment_verdict = "Targeted Response"
+                    state.confidence_level = "N/A"
                 
                 # Format to markdown for frontend and db
-                md = f"## Executive Summary\n{synth_out.executive_summary}\n\n"
+                if synth_out.targeted_answer:
+                    md = f"## Targeted Answer\n{synth_out.targeted_answer}\n\n"
+                    md += f"**Summary**: {synth_out.executive_summary}\n\n"
+                else:
+                    md = f"## Executive Summary\n{synth_out.executive_summary}\n\n"
                 
                 if synth_out.conflict_resolution_log:
                     md += "## Conflict Resolution\n"

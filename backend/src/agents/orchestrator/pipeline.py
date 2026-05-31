@@ -12,48 +12,66 @@ from src.agents.base.shared_state import SharedState
 
 logger = logging.getLogger("vittsarathi.pipeline")
 
-async def run_analysis(ticker: str) -> dict:
-    logger.info(f"[pipeline] ===== Starting analysis for {ticker} =====")
+async def run_analysis(user_query: str) -> dict:
+    logger.info(f"[pipeline] ===== Starting analysis for query: {user_query} =====")
     start_time = datetime.now(timezone.utc)
 
     # ─── Step 1: Orchestrator ───
-    logger.info("[pipeline] Step 1: Orchestrator — fetching data & classifying industry")
-    state = await orchestrator.execute(ticker=ticker)
+    logger.info("[pipeline] Step 1: Orchestrator — extracting entity & routing")
+    state = await orchestrator.execute(user_query=user_query)
     logger.info(f"[pipeline] Orchestrator done. Company: {state.company_name}, Industry: {state.industry}")
 
     # ─── Step 2: Parallel Sub-Agents ───
-    logger.info("[pipeline] Step 2: Running Quantitative + Qualitative + Risk agents in PARALLEL")
+    logger.info("[pipeline] Step 2: Running routed agents in PARALLEL")
 
     quant_state_copy = state.model_copy(deep=True)
     qual_state_copy = state.model_copy(deep=True)
     risk_state_copy = state.model_copy(deep=True)
 
-    quant_result, qual_result, risk_result = await asyncio.gather(
-        quantitative_agent.execute(quant_state_copy),
-        qualitative_agent.execute(qual_state_copy),
-        risk_agent.execute(risk_state_copy),
-    )
+    tasks = []
+    agent_map = []
 
-    state.quantitative = quant_result.quantitative
-    state.qualitative = qual_result.qualitative
-    state.risk_governance = risk_result.risk_governance
-    state.agent_statuses.update({
-        "quantitative": quant_result.agent_statuses.get("quantitative", "completed"),
-        "qualitative": qual_result.agent_statuses.get("qualitative", "completed"),
-        "risk_governance": risk_result.agent_statuses.get("risk_governance", "completed"),
-    })
+    if state.task_allocations.agent_2_quantitative.should_run:
+        tasks.append(quantitative_agent.execute(quant_state_copy))
+        agent_map.append("quantitative")
+    
+    if state.task_allocations.agent_3_qualitative.should_run:
+        tasks.append(qualitative_agent.execute(qual_state_copy))
+        agent_map.append("qualitative")
+        
+    if state.task_allocations.agent_4_risk_governance.should_run:
+        tasks.append(risk_agent.execute(risk_state_copy))
+        agent_map.append("risk_governance")
 
-    logger.info("[pipeline] All 3 sub-agents completed")
+    if tasks:
+        results = await asyncio.gather(*tasks)
+        for i, result_state in enumerate(results):
+            agent_name = agent_map[i]
+            if agent_name == "quantitative":
+                state.quantitative = result_state.quantitative
+            elif agent_name == "qualitative":
+                state.qualitative = result_state.qualitative
+            elif agent_name == "risk_governance":
+                state.risk_governance = result_state.risk_governance
+                
+            state.agent_statuses[agent_name] = result_state.agent_statuses.get(agent_name, "completed")
+    
+    logger.info(f"[pipeline] Routed sub-agents completed: {agent_map}")
 
     # ─── Step 3: Synthesizer ───
     logger.info("[pipeline] Step 3: Synthesizer — cross-referencing & compiling final thesis")
     state = await synthesizer.execute(state)
 
     elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
-    logger.info(f"[pipeline] ===== Analysis complete for {ticker} in {elapsed:.1f}s =====")
-    logger.info(f"[pipeline] Verdict: {state.investment_verdict} (Confidence: {state.confidence_level})")
+    logger.info(f"[pipeline] ===== Analysis complete for {state.ticker} in {elapsed:.1f}s =====")
+    
+    if state.synthesis and state.synthesis.targeted_answer:
+        logger.info(f"[pipeline] Verdict: Targeted Answer generated")
+    else:
+        logger.info(f"[pipeline] Verdict: {state.investment_verdict} (Confidence: {state.confidence_level})")
 
     result = {
+        "user_query": state.user_query,
         "ticker": state.ticker,
         "company_name": state.company_name,
         "sector": state.sector,
