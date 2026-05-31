@@ -1,6 +1,7 @@
 import logging
 from src.agents.base.base_agent import BaseAgent
 from src.agents.base.shared_state import SharedState, RiskGovernanceOutput
+from src.tools.analyze_risk_governance_tool import analyze_risk_governance
 from .config import RiskGovernanceConfig
 
 logger = logging.getLogger("vittsarathi.agents.risk")
@@ -91,9 +92,12 @@ Produce your risk assessment as a JSON object. Be thorough and skeptical."""
                 await client.connect_to_server("risk", read=read, write=write)
                 mcp_tools = await client.get_tools()
                 
+                rag_tools = [analyze_risk_governance]
+                all_tools = mcp_tools + rag_tools
+                
                 agent = create_agent(
                     model=self._get_llm(),
-                    tools=mcp_tools,
+                    tools=all_tools,
                     system_prompt=self.system_prompt,
                     response_format=RiskGovernanceOutput
                 )

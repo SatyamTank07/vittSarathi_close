@@ -1,6 +1,8 @@
 import logging
 from src.agents.base.base_agent import BaseAgent
 from src.agents.base.shared_state import SharedState, QualitativeOutput
+from src.tools.search_narrative_disclosures_tool import search_narrative_disclosures
+from src.tools.historical_trend_search_tool import historical_trend_search
 from .config import QualitativeConfig
 
 logger = logging.getLogger("vittsarathi.agents.qualitative")
@@ -67,7 +69,7 @@ Produce your qualitative business assessment as a JSON object."""
 
         agent = create_agent(
             model=self._get_llm(),
-            tools=[],
+            tools=[search_narrative_disclosures, historical_trend_search],
             system_prompt=self.system_prompt,
             response_format=QualitativeOutput
         )

@@ -5,6 +5,9 @@ from mcp.client.stdio import stdio_client
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from src.agents.base.base_agent import BaseAgent
 from src.agents.base.shared_state import SharedState, QuantitativeOutput
+from src.tools.fetch_financial_statements_tool import fetch_financial_statements
+from src.tools.deep_dive_cross_ref_tool import deep_dive_cross_ref
+from src.tools.historical_trend_search_tool import historical_trend_search
 from .config import QuantitativeConfig
 
 logger = logging.getLogger("vittsarathi.agents.quantitative")
@@ -100,9 +103,12 @@ Produce your quantitative analysis as a JSON object."""
                 await client.connect_to_server("fmp", read=read, write=write)
                 mcp_tools = await client.get_tools()
                 
+                rag_tools = [fetch_financial_statements, deep_dive_cross_ref, historical_trend_search]
+                all_tools = mcp_tools + rag_tools
+                
                 agent = create_agent(
                     model=self._get_llm(),
-                    tools=mcp_tools,
+                    tools=all_tools,
                     system_prompt=self.system_prompt,
                     response_format=QuantitativeOutput
                 )
