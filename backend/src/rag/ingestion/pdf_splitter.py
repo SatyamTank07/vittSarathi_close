@@ -5,6 +5,8 @@ Uses PyMuPDF (fitz) for fast, reliable PDF manipulation.
 Also computes SHA-256 hash of the original file for deduplication.
 """
 
+from __future__ import annotations
+
 import hashlib
 import logging
 import shutil

@@ -183,7 +183,7 @@ class RAGSectionChunk(Base):
     fts_vector = Column(TSVECTOR)
 
     # Full metadata as JSON (for filtering during retrieval)
-    metadata = Column(JSONB)
+    chunk_metadata = Column("metadata", JSONB)
 
     created_at = Column(DateTime(timezone=True), default=_utcnow)
 
@@ -306,7 +306,7 @@ Index(
 # GIN index on metadata JSONB for fast metadata filtering
 Index(
     "ix_rag_section_chunks_metadata",
-    RAGSectionChunk.metadata,
+    RAGSectionChunk.chunk_metadata,
     postgresql_using="gin",
 )
 

@@ -294,7 +294,7 @@ class IngestionPipeline:
                         chunk_text=chunk.chunk_text,
                         metadata_prefix=chunk.metadata_prefix,
                         chunk_index=chunk.chunk_index,
-                        metadata=chunk.metadata.model_dump(),
+                        chunk_metadata=chunk.metadata.model_dump(),
                     )
                     self.db.add(db_chunk)
 
