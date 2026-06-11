@@ -8,6 +8,8 @@ metadata pre-filtering at query time.
 Uses gpt-4o-mini with structured output for cost efficiency.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import os
