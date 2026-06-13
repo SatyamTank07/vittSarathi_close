@@ -1,16 +1,17 @@
-import logging
-from typing import Dict, Any
+# src/agents/orchestrator/agent.py
 
+import logging
 from langchain.agents import create_agent
 
 from src.agents.base.base_agent import BaseAgent
-from src.agents.base.shared_state import SharedState, OrchestratorOutput
+from src.agents.base.shared_state import SharedState, OrchestratorOutputV2
 from .config import OrchestratorConfig
 
 logger = logging.getLogger("vittsarathi.agents.orchestrator")
 
 
 class OrchestratorAgent(BaseAgent):
+
     def __init__(self):
         self.config = OrchestratorConfig
         self.agent_name = self.config["name"]
@@ -19,60 +20,87 @@ class OrchestratorAgent(BaseAgent):
         self.system_prompt = self.config["system_prompt"]
         self.tools = self.config.get("tools", [])
 
-    async def execute(self, state: SharedState = None, user_query: str = None) -> SharedState:
+    async def execute(
+        self,
+        state: SharedState = None,
+        user_query: str = None
+    ) -> SharedState:
+
         if not user_query:
             raise ValueError("Orchestrator requires a user_query.")
 
-        logger.info(f"[{self.agent_name}] Starting analysis for query: {user_query}")
+        logger.info(f"[{self.agent_name}] Starting for query: {user_query}")
 
         user_prompt = (
-            f"Analyze the following User Query: '{user_query}'\n\n"
-            f"1. Extract the company name and use the get_company_profile tool to fetch its profile.\n"
-            f"2. Produce the structured task allocation JSON. Set should_run = true ONLY for agents needed to answer the query.\n"
-            f"3. Assign a `confidence_score` between 0.0 and 1.0 to your entity extraction. If the user query is ambiguous (e.g., 'Tata' could mean Tata Motors, Tata Steel, or TCS), set the `confidence_score` below 0.8 and populate `disambiguation_candidates` with 2-3 likely options."
+            f"User Query: '{user_query}'\n\n"
+            f"1. Extract the company name and use get_company_profile to fetch its profile.\n"
+            f"2. Classify the response_type (dashboard / chat / patch).\n"
+            f"3. Decide which agents and sub-agents to run based on the query intent.\n"
+            f"4. Produce the ExecutionPlan JSON. "
+            f"Use only agent and sub-agent names listed in the system prompt. "
+            f"Add a reasoning field for every agent explaining your decision."
         )
 
-        # Create the LangChain agent with our tools and desired structured output
         agent = create_agent(
             model=self._get_llm(),
             tools=self.tools,
             system_prompt=self.system_prompt,
-            response_format=OrchestratorOutput
+            response_format=OrchestratorOutputV2      # <-- switched from OrchestratorOutput
         )
 
-        # Invoke the agent using the standard messages payload
-        result = agent.invoke({"messages": [{"role": "user", "content": user_prompt}]})
-        
-        # Extract the structured response (which is fully validated by Pydantic)
-        structured: OrchestratorOutput = result.get("structured_response")
-        
+        result = agent.invoke({
+            "messages": [{"role": "user", "content": user_prompt}]
+        })
+
+        structured: OrchestratorOutputV2 = result.get("structured_response")
+
         if not structured:
-            raise ValueError(f"[{self.agent_name}] Agent did not return a structured_response for '{ticker}'")
+            raise ValueError(
+                f"[{self.agent_name}] No structured_response returned for query: {user_query}"
+            )
 
         meta = structured.orchestration_meta
-        task_allocations = structured.task_allocations
+        execution_plan = structured.execution_plan
 
         logger.info(
-            f"[{self.agent_name}] {meta.company_name} routed via '{meta.routing_framework}' "
-            f"(sector={meta.sector}, industry={meta.industry})"
+            f"[{self.agent_name}] {meta.company_name} | "
+            f"framework={meta.routing_framework} | "
+            f"response_type={execution_plan.response_type} | "
+            f"agents_to_run={[k for k,v in execution_plan.agents.items() if v.should_run]}"
         )
 
-        state = SharedState(
+        # Log reasoning for each agent decision
+        for agent_name, agent_exec in execution_plan.agents.items():
+            logger.info(
+                f"[{self.agent_name}] {agent_name}: "
+                f"should_run={agent_exec.should_run} | "
+                f"reasoning={agent_exec.reasoning}"
+            )
+
+        # Warn if confidence is low — clarification needed
+        clarification_needed = meta.confidence_score < 0.8
+
+        new_state = SharedState(
             user_query=user_query,
             ticker=meta.ticker,
             company_name=meta.company_name,
             industry=meta.industry,
             sector=meta.sector,
-            currency="INR" if ".NS" in meta.ticker or ".BO" in meta.ticker else "USD",
+            currency="INR" if (
+                ".NS" in meta.ticker or ".BO" in meta.ticker
+            ) else "USD",
             summary="",
             routing_framework=meta.routing_framework,
-            task_allocations=task_allocations,
-            clarification_needed=meta.confidence_score < 0.8,
+            execution_plan=execution_plan,        # <-- switched from task_allocations
+            clarification_needed=clarification_needed,
+            disambiguation_candidates=meta.disambiguation_candidates,
         )
-        state.agent_statuses[self.agent_name] = "completed"
+        new_state.agent_statuses[self.agent_name] = "completed"
 
-        logger.info(f"[{self.agent_name}] SharedState created for {state.ticker}")
-        return state
+        logger.info(
+            f"[{self.agent_name}] SharedState created for {new_state.ticker}"
+        )
+        return new_state
 
 
 orchestrator = OrchestratorAgent()

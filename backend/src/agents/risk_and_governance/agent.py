@@ -1,4 +1,6 @@
 import logging
+import asyncio
+from typing import Dict, Type
 from src.agents.base.base_agent import BaseAgent
 from src.agents.base.shared_state import SharedState, RiskGovernanceOutput
 from src.tools.analyze_risk_governance_tool import analyze_risk_governance
@@ -7,24 +9,27 @@ from .config import RiskGovernanceConfig
 logger = logging.getLogger("vittsarathi.agents.risk")
 
 class RiskGovernanceAgent(BaseAgent):
-    def __init__(self):
+    def __init__(self, sub_agents: Dict[str, Type[BaseAgent]] = None):
         self.config = RiskGovernanceConfig
         self.agent_name = self.config["name"]
         self.model = self.config["model"]
         self.max_tokens = self.config.get("max_tokens", 700)
         self.system_prompt = self.config["system_prompt"]
+        self.approved_sub_agents: Dict[str, Type[BaseAgent]] = sub_agents or {}
 
     def _build_prompt(self, state: SharedState) -> str:
         data = state.stock_data
 
-        # ── Build dynamic instructions from task_allocations (preferred) or fallback ──
-        if state.task_allocations and state.task_allocations.agent_4_risk_governance:
-            alloc = state.task_allocations.agent_4_risk_governance
-            risk_lines = "\n".join(f"  - {r}" for r in alloc.risk_vectors_to_score)
-            instructions = (
-                f"RISK VECTORS TO SCORE:\n{risk_lines}\n\n"
-                f"COMPLIANCE BENCHMARKS: {alloc.compliance_benchmarks}"
-            )
+        focus_list = []
+        if (
+            state.execution_plan
+            and "risk_governance" in state.execution_plan.agents
+        ):
+            focus_list = state.execution_plan.agents["risk_governance"].focus
+
+        if focus_list:
+            focus_lines = "\n".join(f"  - {m}" for m in focus_list)
+            instructions = f"FOCUS METRICS:\n{focus_lines}"
         else:
             instructions = state.industry_instructions.get("risk_focus", "")
 
@@ -109,10 +114,59 @@ Produce your risk assessment as a JSON object. Be thorough and skeptical."""
         if not structured:
             raise ValueError(f"[{self.agent_name}] Agent did not return a structured_response for '{state.ticker}'")
             
-        state.risk_governance = structured
+        from src.agents.base.shared_state import AgentResult
+        state.risk_governance_result = AgentResult(
+            data=structured,
+            status="success",
+            data_quality="high",
+            fallback_used=False,
+            agent_name=self.agent_name
+        )
 
         state.agent_statuses[self.agent_name] = "completed"
-        logger.info(f"[{self.agent_name}] Done for {state.ticker}")
+        logger.info(f"[{self.agent_name}] Main analysis done for {state.ticker}")
+
+        if self.approved_sub_agents:
+            await self._run_sub_agents(state)
+
         return state
+
+    async def _run_sub_agents(self, state: SharedState) -> None:
+        from src.agents.base.shared_state import AgentResult
+        logger.info(
+            f"[{self.agent_name}] Running {len(self.approved_sub_agents)} "
+            f"sub-agent(s): {list(self.approved_sub_agents.keys())}"
+        )
+
+        async def run_one(sub_name: str, sub_cls: Type[BaseAgent]) -> tuple[str, AgentResult]:
+            try:
+                instance = sub_cls()
+                result = await asyncio.wait_for(instance.execute(state), timeout=45.0)
+                logger.info(f"[{self.agent_name}] Sub-agent '{sub_name}' completed")
+                return sub_name, result
+            except asyncio.TimeoutError:
+                logger.warning(f"[{self.agent_name}] Sub-agent '{sub_name}' timed out")
+                return sub_name, AgentResult(
+                    status="failed", error="timeout", agent_name=sub_name,
+                    data_quality="unavailable"
+                )
+            except Exception as e:
+                logger.error(f"[{self.agent_name}] Sub-agent '{sub_name}' failed: {e}")
+                return sub_name, AgentResult(
+                    status="failed", error=str(e), agent_name=sub_name,
+                    data_quality="unavailable"
+                )
+
+        tasks = [run_one(name, cls) for name, cls in self.approved_sub_agents.items()]
+        results = await asyncio.gather(*tasks)
+
+        for sub_name, agent_result in results:
+            namespace_key = f"{self.agent_name}.{sub_name}"
+            state.sub_agent_results[namespace_key] = agent_result
+            logger.info(
+                f"[{self.agent_name}] Stored sub-agent result at "
+                f"state.sub_agent_results['{namespace_key}'] "
+                f"status={agent_result.status}"
+            )
 
 risk_agent = RiskGovernanceAgent()
