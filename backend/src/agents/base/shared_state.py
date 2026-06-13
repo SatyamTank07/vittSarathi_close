@@ -14,6 +14,11 @@ class OrchestrationMeta(BaseModel):
     sector: str
     industry: str
     routing_framework: str
+    confidence_score: float = Field(default=1.0, description="Confidence score from 0.0 to 1.0 for the extracted entity.")
+    disambiguation_candidates: List[Dict[str, str]] = Field(
+        default_factory=list, 
+        description="If confidence is < 0.8, provide a list of dicts with 'ticker' and 'company_name' for the top 3 candidates."
+    )
 
 class QuantitativeAllocation(BaseModel):
     should_run: bool = False
@@ -126,6 +131,7 @@ class SharedState(BaseModel):
     routing_framework: str = ""
     industry_instructions: Dict[str, str] = Field(default_factory=dict)
     stock_data: Dict[str, Any] = Field(default_factory=dict)
+    clarification_needed: bool = False
 
     # ─── Orchestrator Task Allocations ───
     task_allocations: Optional[TaskAllocations] = None

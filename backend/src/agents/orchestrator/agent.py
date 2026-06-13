@@ -28,7 +28,8 @@ class OrchestratorAgent(BaseAgent):
         user_prompt = (
             f"Analyze the following User Query: '{user_query}'\n\n"
             f"1. Extract the company name and use the get_company_profile tool to fetch its profile.\n"
-            f"2. Produce the structured task allocation JSON. Set should_run = true ONLY for agents needed to answer the query."
+            f"2. Produce the structured task allocation JSON. Set should_run = true ONLY for agents needed to answer the query.\n"
+            f"3. Assign a `confidence_score` between 0.0 and 1.0 to your entity extraction. If the user query is ambiguous (e.g., 'Tata' could mean Tata Motors, Tata Steel, or TCS), set the `confidence_score` below 0.8 and populate `disambiguation_candidates` with 2-3 likely options."
         )
 
         # Create the LangChain agent with our tools and desired structured output
@@ -66,6 +67,7 @@ class OrchestratorAgent(BaseAgent):
             summary="",
             routing_framework=meta.routing_framework,
             task_allocations=task_allocations,
+            clarification_needed=meta.confidence_score < 0.8,
         )
         state.agent_statuses[self.agent_name] = "completed"
 

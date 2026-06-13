@@ -22,6 +22,36 @@ async def run_analysis(user_query: str) -> dict:
     state = await orchestrator.execute(user_query=user_query)
     logger.info(f"[pipeline] Orchestrator done. Company: {state.company_name}, Industry: {state.industry}")
 
+    if state.clarification_needed:
+        logger.info("[pipeline] Ambiguous entity detected. Halting pipeline for user clarification.")
+        meta = state.task_allocations.orchestration_meta
+        candidates_str = "\n".join([f"- **{c.get('company_name', 'Unknown')}** ({c.get('ticker', '')})" for c in meta.disambiguation_candidates])
+        
+        msg = f"I found multiple matches for your query. Could you please clarify which one you meant?\n\n{candidates_str}"
+        state.final_thesis = msg
+        state.investment_verdict = "Clarification Needed"
+        
+        result = {
+            "user_query": state.user_query,
+            "ticker": state.ticker,
+            "company_name": state.company_name,
+            "sector": state.sector,
+            "industry": state.industry,
+            "currency": state.currency,
+            "current_price": state.current_price,
+            "investment_verdict": state.investment_verdict,
+            "confidence_level": state.confidence_level,
+            "final_thesis": state.final_thesis,
+            "quantitative": None,
+            "qualitative": None,
+            "risk_governance": None,
+            "sentiment": None,
+            "agent_statuses": state.agent_statuses,
+            "analysis_duration_seconds": round((datetime.now(timezone.utc) - start_time).total_seconds(), 1),
+            "shared_state_json": state.model_dump_json(),
+        }
+        return result
+
     # ─── Step 2: Parallel Sub-Agents ───
     logger.info("[pipeline] Step 2: Running routed agents in PARALLEL")
 
