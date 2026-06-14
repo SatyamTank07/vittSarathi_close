@@ -12,7 +12,28 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - vittsarathi-network
     restart: always
+
+  playwright-mcp:
+    image: mcr.microsoft.com/playwright/mcp:latest
+    container_name: vittsarathi_playwright_mcp
+    entrypoint: node
+    command: >
+      /app/cli.js
+      --headless
+      --browser chromium
+      --no-sandbox
+      --port 8931
+      --host 0.0.0.0
+      --isolated
+    ports:
+      - "8931:8931"
+    networks:
+      - vittsarathi-network
+    restart: unless-stopped
+    init: true
 
   backend:
     build:
@@ -27,11 +48,19 @@ services:
       - PYTHONUNBUFFERED=1
       - ENV=development
       - DATABASE_URL=postgresql://postgres:password@db:5432/vittsarathi_chat
+      - PLAYWRIGHT_MCP_URL=http://playwright-mcp:8931/sse
     env_file:
       - ./backend/.env
     depends_on:
       - db
+      - playwright-mcp
+    networks:
+      - vittsarathi-network
     restart: always
 
 volumes:
   pgdata:
+
+networks:
+  vittsarathi-network:
+    driver: bridge

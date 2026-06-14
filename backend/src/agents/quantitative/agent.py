@@ -9,6 +9,7 @@ from src.agents.base.shared_state import SharedState, QuantitativeOutput
 from src.tools.fetch_financial_statements_tool import fetch_financial_statements
 from src.tools.deep_dive_cross_ref_tool import deep_dive_cross_ref
 from src.tools.historical_trend_search_tool import historical_trend_search
+from src.tools.screener_scraper import scrape_screener, DataSource
 from .config import QuantitativeConfig
 
 logger = logging.getLogger("vittsarathi.agents.quantitative")
@@ -78,9 +79,34 @@ class QuantitativeAgent(BaseAgent):
 
         metrics_str = "\n".join(f"  {k}: {v}" for k, v in metrics.items() if v is not None)
 
+        # ── NEW: append screener data if available ──
+        screener_block = ""
+        screener_ratios = data.get("screener_ratios", {})
+        screener_financials = data.get("screener_financials", {})
+        screener_source = data.get("screener_data_source", "not_attempted")
+
+        if screener_ratios:
+            ratios_str = "\n".join(f"  {k}: {v}" for k, v in screener_ratios.items())
+            screener_block += f"\nSCREENER.IN LIVE RATIOS (source: {screener_source}):\n{ratios_str}"
+
+        if screener_financials:
+            for table_name, table_data in screener_financials.items():
+                if table_data is not None:
+                    screener_block += f"\nSCREENER.IN {table_name.upper().replace('_', ' ')}:\n"
+                    years = table_data.get("years", [])
+                    rows = table_data.get("rows", {})
+                    if years:
+                        screener_block += f"  Years: {', '.join(years)}\n"
+                    for row_label, row_values in rows.items():
+                        screener_block += f"  {row_label}: {', '.join(str(v) for v in row_values)}\n"
+
+        if screener_source == "failed":
+            screener_block = "\nSCREENER.IN DATA: unavailable — use yfinance data above only.\n"
+
         return f"""Analyze the following stock data:
 
 {metrics_str}
+{screener_block}
 
 INDUSTRY-SPECIFIC FOCUS:
 {instructions}
@@ -89,42 +115,77 @@ Produce your quantitative analysis as a JSON object."""
 
     async def execute(self, state: SharedState) -> SharedState:
         from langchain.agents import create_agent
-        
+        from src.agents.base.shared_state import AgentResult
+
         state.agent_statuses[self.agent_name] = "running"
         logger.info(f"[{self.agent_name}] Analyzing {state.ticker}")
 
+        # ── Step A: Scrape Screener.in first, inject into state.stock_data ──
+        try:
+            screener_result = await scrape_screener(state.ticker)
+
+            state.stock_data["screener_ratios"]      = screener_result.ratios
+            state.stock_data["screener_financials"]  = screener_result.financials
+            state.stock_data["screener_data_source"] = screener_result.data_source.value
+
+            if screener_result.data_source == DataSource.FAILED:
+                logger.warning(
+                    f"[{self.agent_name}] Screener scrape failed for {state.ticker}: "
+                    f"{screener_result.error} — continuing with yfinance data only"
+                )
+            else:
+                logger.info(
+                    f"[{self.agent_name}] Screener data loaded — "
+                    f"source: {screener_result.data_source.value}, "
+                    f"ratios: {list(screener_result.ratios.keys())}"
+                )
+
+        except Exception as e:
+            # Never let scraper failure crash the agent
+            logger.error(
+                f"[{self.agent_name}] Screener scraper raised unexpected exception "
+                f"for {state.ticker}: {e}",
+                exc_info=True
+            )
+            state.stock_data["screener_data_source"] = DataSource.FAILED.value
+            state.stock_data["screener_ratios"]      = {}
+            state.stock_data["screener_financials"]  = {}
+
+        # ── Step B: Build prompt — now includes screener data ──
         prompt = self._build_prompt(state)
-        
-        # Connect to MCP server via stdio
+
+        # ── Step C: FMP MCP + RAG agent — unchanged from before ──
         server_params = StdioServerParameters(
             command="python",
             args=["src/mcp/fmp_server.py"]
         )
-        
+
         async with stdio_client(server_params) as (read, write):
             async with MultiServerMCPClient() as client:
                 await client.connect_to_server("fmp", read=read, write=write)
                 mcp_tools = await client.get_tools()
-                
+
                 rag_tools = [fetch_financial_statements, deep_dive_cross_ref, historical_trend_search]
                 all_tools = mcp_tools + rag_tools
-                
+
                 agent = create_agent(
                     model=self._get_llm(),
                     tools=all_tools,
                     system_prompt=self.system_prompt,
                     response_format=QuantitativeOutput
                 )
-                
-                # Using ainvoke to properly support async MCP tools within the active connection
+
                 result = await agent.ainvoke({"messages": [{"role": "user", "content": prompt}]})
-        
+
+        # ── Step D: Extract result — unchanged from before ──
         structured: QuantitativeOutput = result.get("structured_response")
-        
+
         if not structured:
-            raise ValueError(f"[{self.agent_name}] Agent did not return a structured_response for '{state.ticker}'")
-            
-        from src.agents.base.shared_state import AgentResult
+            raise ValueError(
+                f"[{self.agent_name}] Agent did not return a structured_response "
+                f"for '{state.ticker}'"
+            )
+
         state.quantitative_result = AgentResult(
             data=structured,
             status="success",
@@ -136,6 +197,7 @@ Produce your quantitative analysis as a JSON object."""
         state.agent_statuses[self.agent_name] = "completed"
         logger.info(f"[{self.agent_name}] Main analysis done for {state.ticker}")
 
+        # ── Step E: Sub-agents — unchanged from before ──
         if self.approved_sub_agents:
             await self._run_sub_agents(state)
 
