@@ -23,7 +23,7 @@ class DocumentMetadataOutput(BaseModel):
     company_id: str = Field(description="The ticker or short name of the company (e.g. TATA_MOTORS)")
     fiscal_year: int = Field(description="The 4 digit fiscal year of the report (e.g. 2024)")
     report_type: str = Field(description="Must be exactly 'annual' or 'quarterly'")
-    fiscal_quarter: str = Field(None, description="Q1, Q2, Q3, Q4 or None if annual")
+    fiscal_quarter: str | None = Field(None, description="Q1, Q2, Q3, Q4 or None if annual")
 
 def extract_metadata_from_text(text: str) -> DocumentMetadataOutput:
     """Uses LLM to extract metadata from cover page text."""

@@ -188,6 +188,7 @@ class QueryTier(str, Enum):
 class MetadataFilter(BaseModel):
     """Filters applied to narrow down retrieval scope."""
     company_id: str | None = None
+    report_type: Literal["annual", "quarterly"] | None = None
     fiscal_year: int | None = None
     fiscal_years: list[int] | None = None    # For T4 multi-year queries
     fiscal_quarter: str | None = None
