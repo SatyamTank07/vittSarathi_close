@@ -77,8 +77,36 @@ class OrchestratorAgent(BaseAgent):
                 f"reasoning={agent_exec.reasoning}"
             )
 
-        # Warn if confidence is low — clarification needed
+        # ── Confidence check ──
         clarification_needed = meta.confidence_score < 0.8
+
+        if clarification_needed:
+            logger.warning(
+                f"[{self.agent_name}] Low confidence entity extraction: "
+                f"score={meta.confidence_score:.2f} | "
+                f"resolved_to={meta.ticker} | "
+                f"candidates={[c.get('ticker') for c in meta.disambiguation_candidates]}"
+            )
+            # Guard: LLM flagged ambiguity but forgot to populate candidates.
+            # In this case inject the resolved ticker as the only candidate
+            # so the frontend has something to show the user.
+            if not meta.disambiguation_candidates:
+                logger.warning(
+                    f"[{self.agent_name}] confidence_score < 0.8 but "
+                    f"disambiguation_candidates is empty. "
+                    f"Injecting resolved ticker as fallback candidate."
+                )
+                meta.disambiguation_candidates = [
+                    {
+                        "ticker": meta.ticker,
+                        "company_name": meta.company_name,
+                    }
+                ]
+        else:
+            logger.info(
+                f"[{self.agent_name}] Entity extraction confident: "
+                f"score={meta.confidence_score:.2f} | ticker={meta.ticker}"
+            )
 
         new_state = SharedState(
             user_query=user_query,
@@ -94,6 +122,7 @@ class OrchestratorAgent(BaseAgent):
             execution_plan=execution_plan,        # <-- switched from task_allocations
             clarification_needed=clarification_needed,
             disambiguation_candidates=meta.disambiguation_candidates,
+            orchestrator_confidence=meta.confidence_score,
         )
         new_state.agent_statuses[self.agent_name] = "completed"
 

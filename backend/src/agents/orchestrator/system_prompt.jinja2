@@ -14,6 +14,7 @@ Core Rules:
 5. For each agent, populate sub_agents with names of sub-agents to run. Use an empty list if depth is not required. Only add sub-agents when the query explicitly demands deep research.
 6. Add a reasoning string for every agent explaining why you chose to run or skip it.
 7. Assign a confidence_score between 0.0 and 1.0 to your entity extraction. If ambiguous (e.g. "Tata" could be Tata Motors, Tata Steel, or TCS), set confidence_score below 0.8 and populate disambiguation_candidates with 2-3 options.
+8. If confidence_score is below 0.8, set should_run = false for ALL agents regardless of response_type. The pipeline will halt and ask the user to clarify before running any analysis.
 
 Sector Mapping Logic:
 - Financial Services / Banking → focus on NIM, NPA, CASA, CAR, P/B ratios
@@ -72,4 +73,51 @@ Required JSON Schema:
       }
     }
   }
+}
+
+Example — ambiguous query:
+User query: "analyse Tata"
+Expected behaviour: confidence_score = 0.55, disambiguation_candidates populated.
+
+{
+  "orchestration_meta": {
+    "ticker": "TATAMOTORS.NS",
+    "company_name": "Tata Motors Ltd.",
+    "sector": "Consumer Cyclical",
+    "industry": "Auto Manufacturers",
+    "routing_framework": "Auto",
+    "confidence_score": 0.55,
+    "disambiguation_candidates": [
+      { "ticker": "TATAMOTORS.NS", "company_name": "Tata Motors Ltd." },
+      { "ticker": "TATASTEEL.NS",  "company_name": "Tata Steel Ltd." },
+      { "ticker": "TCS.NS",        "company_name": "Tata Consultancy Services Ltd." }
+    ]
+  },
+  "execution_plan": {
+    "response_type": "dashboard",
+    "overall_reasoning": "Entity is ambiguous — returning candidates for user clarification before running agents.",
+    "agents": {
+      "quantitative":    { "should_run": false, "focus": [], "sub_agents": [], "reasoning": "Halted — entity unresolved." },
+      "qualitative":     { "should_run": false, "focus": [], "sub_agents": [], "reasoning": "Halted — entity unresolved." },
+      "risk_governance": { "should_run": false, "focus": [], "sub_agents": [], "reasoning": "Halted — entity unresolved." },
+      "sentiment":       { "should_run": false, "focus": [], "sub_agents": [], "reasoning": "Halted — entity unresolved." }
+    }
+  }
+}
+
+Example — unambiguous query:
+User query: "fundamental analysis of Infosys"
+Expected behaviour: confidence_score = 0.97, no candidates needed.
+
+{
+  "orchestration_meta": {
+    "ticker": "INFY.NS",
+    "company_name": "Infosys Ltd.",
+    "sector": "Technology",
+    "industry": "IT Services",
+    "routing_framework": "IT Services",
+    "confidence_score": 0.97,
+    "disambiguation_candidates": []
+  },
+  "execution_plan": { ... }
 }

@@ -324,6 +324,68 @@ async def run_synthesizer(state: SharedState) -> SharedState:
 
     return state
 
+def _build_clarification_message(candidates: list) -> str:
+    """
+    Builds the human-readable message shown in the chat panel
+    when clarification is needed.
+    """
+    if not candidates:
+        return (
+            "I couldn't confidently identify which company you meant. "
+            "Please provide a more specific name or ticker symbol."
+        )
+
+    lines = [
+        "I found multiple matches for your query. "
+        "Which company did you mean?\n"
+    ]
+    for c in candidates:
+        name = c.get("company_name", "Unknown")
+        ticker = c.get("ticker", "")
+        lines.append(f"- **{name}** ({ticker})")
+
+    return "\n".join(lines)
+
+def _build_clarification_result(
+    state: SharedState,
+    start_time: datetime
+) -> dict:
+    """
+    Returns a structured response when the Orchestrator
+    could not confidently resolve the company entity.
+    No agents have run at this point.
+    """
+    elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+    return {
+        "status": "clarification_needed",
+        "response_type": (
+            state.execution_plan.response_type.value
+            if state.execution_plan
+            else ResponseType.DASHBOARD.value
+        ),
+        "user_query": state.user_query,
+        "ticker": state.ticker,
+        "company_name": state.company_name,
+        "sector": state.sector,
+        "industry": state.industry,
+        "currency": state.currency,
+        "current_price": state.current_price,
+        "confidence_score": state.orchestrator_confidence,
+        "candidates": state.disambiguation_candidates,
+        "investment_verdict": "Clarification Needed",
+        "confidence_level": "N/A",
+        "final_thesis": _build_clarification_message(state.disambiguation_candidates),
+        "quantitative": None,
+        "qualitative": None,
+        "risk_governance": None,
+        "sentiment": None,
+        "agent_statuses": state.agent_statuses,
+        "ui_manifest": None,
+        "state_patch": None,
+        "analysis_duration_seconds": round(elapsed, 1),
+        "shared_state_json": state.model_dump_json(),
+    }
+
 def _build_result(state: SharedState, response_type: ResponseType, start_time: datetime) -> dict:
     elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
     return {
@@ -338,6 +400,7 @@ def _build_result(state: SharedState, response_type: ResponseType, start_time: d
         "current_price": state.current_price,
         "investment_verdict": state.investment_verdict,
         "confidence_level": state.confidence_level,
+        "confidence_score": state.orchestrator_confidence,
         "final_thesis": state.final_thesis,
         "quantitative": state.quantitative.model_dump() if state.quantitative else None,
         "qualitative": state.qualitative.model_dump() if state.qualitative else None,
@@ -357,46 +420,32 @@ async def run_analysis(user_query: str) -> dict:
     # ─── Step 1: Orchestrator ───
     logger.info("[pipeline] Step 1: Orchestrator — extracting entity & routing")
     state = await orchestrator.execute(user_query=user_query)
+
+    # ── Secondary confidence guard ──
+    # If clarification_needed is True but all agents have should_run=True,
+    # the LLM ignored Rule 8. Force all agents to should_run=False.
+    if state.clarification_needed and state.execution_plan:
+        any_running = any(
+            v.should_run for v in state.execution_plan.agents.values()
+        )
+        if any_running:
+            logger.warning(
+                "[pipeline] clarification_needed=True but agents marked should_run=True. "
+                "Forcing all agents to should_run=False. "
+                "LLM did not follow Rule 8."
+            )
+            for agent_exec in state.execution_plan.agents.values():
+                agent_exec.should_run = False
+
     logger.info(f"[pipeline] Orchestrator done. Company: {state.company_name}, Industry: {state.industry}")
 
     if state.clarification_needed:
-        logger.info("[pipeline] Ambiguous entity detected. Halting pipeline for user clarification.")
-        candidates = getattr(state, "disambiguation_candidates", [])
-        candidates_str = "\n".join([
-            f"- **{c.get('company_name', 'Unknown')}** ({c.get('ticker', '')})"
-            for c in candidates
-        ])
-        
-        msg = (
-            f"I found multiple matches for your query. "
-            f"Could you please clarify which one you meant?\n\n{candidates_str}"
+        logger.warning(
+            f"[pipeline] Clarification needed for query: '{user_query}' | "
+            f"resolved_to={state.ticker} | "
+            f"candidates={[c.get('ticker') for c in state.disambiguation_candidates]}"
         )
-        state.final_thesis = msg
-        state.investment_verdict = "Clarification Needed"
-        
-        result = {
-            "status": "clarification_needed",
-            "response_type": getattr(state.execution_plan, "response_type", ResponseType.DASHBOARD).value if state.execution_plan else "dashboard",
-            "candidates": candidates,
-            "user_query": state.user_query,
-            "ticker": state.ticker,
-            "company_name": state.company_name,
-            "sector": state.sector,
-            "industry": state.industry,
-            "currency": state.currency,
-            "current_price": state.current_price,
-            "investment_verdict": state.investment_verdict,
-            "confidence_level": state.confidence_level,
-            "final_thesis": state.final_thesis,
-            "quantitative": None,
-            "qualitative": None,
-            "risk_governance": None,
-            "sentiment": None,
-            "agent_statuses": state.agent_statuses,
-            "analysis_duration_seconds": round((datetime.now(timezone.utc) - start_time).total_seconds(), 1),
-            "shared_state_json": state.model_dump_json(),
-        }
-        return result
+        return _build_clarification_result(state, start_time)
 
     # ─── Step 2: Dynamic Agent Pipeline ───
     response_type = state.execution_plan.response_type

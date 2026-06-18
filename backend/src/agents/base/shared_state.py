@@ -243,6 +243,15 @@ class SharedState(BaseModel):
     clarification_needed: bool = False
     disambiguation_candidates: List[Dict[str, str]] = Field(default_factory=list)
 
+    orchestrator_confidence: float = Field(
+        default=1.0,
+        description=(
+            "Confidence score from the Orchestrator's entity extraction. "
+            "Copied from OrchestrationMeta.confidence_score. "
+            "Values below 0.8 trigger clarification_needed."
+        )
+    )
+
     # ─── Orchestrator Task Allocations ───
     execution_plan: Optional[ExecutionPlan] = None
     session_id: str = Field(
