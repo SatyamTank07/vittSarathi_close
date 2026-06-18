@@ -1,6 +1,6 @@
 import logging
 from src.agents.base.base_agent import BaseAgent
-from src.agents.base.shared_state import SharedState
+from src.agents.base.shared_state import SharedState, ResponseType
 from .config import SynthesizerConfig
 
 logger = logging.getLogger("vittsarathi.agents.synthesizer")
@@ -71,6 +71,7 @@ class SynthesizerAgent(BaseAgent):
         return "\n".join(sections)
 
     async def execute(self, state: SharedState) -> SharedState:
+        from src.agents.base.shared_state import SynthesizerOutput, UIManifest, UIComponent
         state.agent_statuses[self.agent_name] = "running"
         logger.info(f"[{self.agent_name}] Compiling final thesis for {state.ticker}")
 
@@ -95,40 +96,59 @@ class SynthesizerAgent(BaseAgent):
                     state.investment_verdict = "Targeted Response"
                     state.confidence_level = "N/A"
                 
-                # Format to markdown for frontend and db
-                if synth_out.targeted_answer:
-                    md = f"## Targeted Answer\n{synth_out.targeted_answer}\n\n"
-                    md += f"**Summary**: {synth_out.executive_summary}\n\n"
+                response_type = (
+                    state.execution_plan.response_type
+                    if state.execution_plan
+                    else ResponseType.DASHBOARD
+                )
+
+                if response_type == ResponseType.CHAT:
+                    md = f"## Answer\n{synth_out.targeted_answer or synth_out.executive_summary}\n"
+
+                elif response_type == ResponseType.PATCH:
+                    md = f"## Update Applied\n{synth_out.targeted_answer or 'Dashboard updated.'}\n"
+                    if synth_out.key_risk_dashboard:
+                        md += "\n## Updated Risk Dashboard\n"
+                        for r_name, r_val in synth_out.key_risk_dashboard.items():
+                            md += f"- **{r_name}**: {r_val}\n"
+
                 else:
                     md = f"## Executive Summary\n{synth_out.executive_summary}\n\n"
-                
-                if synth_out.conflict_resolution_log:
-                    md += "## Conflict Resolution\n"
-                    for c in synth_out.conflict_resolution_log:
-                        md += f"- **Conflict Identified**: {c.conflict_identified}\n"
-                        md += f"  - *Severity*: {c.severity}\n"
-                        md += f"  - *Resolution*: {c.synthesized_resolution}\n\n"
-                        
-                if synth_out.dynamic_investment_pillars:
-                    md += "## Dynamic Investment Pillars\n"
-                    for p_name, p_data in synth_out.dynamic_investment_pillars.items():
-                        title = p_name.replace('_', ' ').title()
-                        md += f"### {title}\n"
-                        md += f"**Thesis**: {p_data.thesis}\n\n"
-                        if p_data.supporting_metrics:
-                            md += "**Supporting Metrics**:\n"
+                    if synth_out.conflict_resolution_log:
+                        md += "## Conflict Resolution\n"
+                        for c in synth_out.conflict_resolution_log:
+                            md += f"- **{c.conflict_identified}** (Severity: {c.severity})\n"
+                            md += f"  - {c.synthesized_resolution}\n\n"
+                    if synth_out.dynamic_investment_pillars:
+                        md += "## Investment Pillars\n"
+                        for p_name, p_data in synth_out.dynamic_investment_pillars.items():
+                            md += f"### {p_name.replace('_', ' ').title()}\n"
+                            md += f"{p_data.thesis}\n"
                             for m in p_data.supporting_metrics:
                                 md += f"- {m.metric}: {m.value} ({m.status})\n"
-                        md += "\n"
-                        
-                if synth_out.key_risk_dashboard:
-                    md += "## Key Risk Dashboard\n"
-                    for r_name, r_val in synth_out.key_risk_dashboard.items():
-                        title = r_name.replace('_', ' ').title()
-                        md += f"- **{title}**: {r_val}\n"
-                        
+                            md += "\n"
+                    if synth_out.key_risk_dashboard:
+                        md += "## Risk Dashboard\n"
+                        for r_name, r_val in synth_out.key_risk_dashboard.items():
+                            md += f"- **{r_name}**: {r_val}\n"
+
                 state.final_thesis = md
-                
+
+                # ─── Step 10: UIManifest generation (dashboard mode only) ───
+                if response_type == ResponseType.DASHBOARD:
+                    try:
+                        from src.agents.synthesizer.manifest_builder import build_ui_manifest
+                        state.ui_manifest = build_ui_manifest(state)
+                        logger.info(
+                            f"[{self.agent_name}] UIManifest built — "
+                            f"{sum(len(v) for v in state.ui_manifest.layout_sections.values())} components "
+                            f"across {len(state.ui_manifest.layout_sections)} sections"
+                        )
+                    except Exception as e:
+                        logger.warning(f"[{self.agent_name}] UIManifest generation failed (non-fatal): {e}")
+                        state.ui_manifest = None
+                        # Do NOT fail the agent — manifest failure is non-fatal
+
             except Exception as e:
                 logger.error(f"Failed to parse SynthesizerOutput: {e}")
                 state.final_thesis = "Synthesis succeeded but failed to parse structured output."
