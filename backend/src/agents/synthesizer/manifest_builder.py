@@ -50,26 +50,12 @@ SECTION_ORDER = [
     "sentiment",
 ]
 
-def build_ui_manifest(state: SharedState) -> UIManifest:
-    if state.synthesis is None:
-        return UIManifest(layout_sections={})
-
-    layout_sections = {section: [] for section in SECTION_ORDER}
-
-    # Section 1 - executive_summary
-    layout_sections["executive_summary"].append(
-        UIComponent(
-            id="text_executive_summary",
-            component_type=ComponentType.TEXT_BLOCK,
-            size=ComponentSize.FULL,
-            data_path="synthesis.executive_summary",
-            label="Executive Summary",
-            status=None,
-            order=0
-        )
-    )
-
-    # Section 2 - key_ratios
+def build_key_ratios_section(state: SharedState) -> List[UIComponent]:
+    """
+    Returns the list of metric_card components for key_ratios.
+    Returns empty list if quantitative data is unavailable.
+    """
+    components = []
     if state.quantitative_result is not None and state.quantitative_result.status in ["success", "partial"]:
         if state.quantitative and state.quantitative.raw_ratios:
             order_idx = 0
@@ -91,7 +77,7 @@ def build_ui_manifest(state: SharedState) -> UIManifest:
 
                     comp_id = "metric_" + key.lower().replace("_pct", "").replace("_ratio", "")
                     
-                    layout_sections["key_ratios"].append(
+                    components.append(
                         UIComponent(
                             id=comp_id,
                             component_type=ComponentType.METRIC_CARD,
@@ -103,8 +89,14 @@ def build_ui_manifest(state: SharedState) -> UIManifest:
                         )
                     )
                     order_idx += 1
+    return components
 
-    # Section 3 - investment_pillars
+def build_investment_pillars_section(state: SharedState) -> List[UIComponent]:
+    """
+    Returns the list of pillar_card components for investment_pillars.
+    Returns empty list if synthesis.dynamic_investment_pillars is None or empty.
+    """
+    components = []
     if state.synthesis and state.synthesis.dynamic_investment_pillars:
         order_idx = 0
         for pillar_name, pillar_obj in state.synthesis.dynamic_investment_pillars.items():
@@ -121,7 +113,7 @@ def build_ui_manifest(state: SharedState) -> UIManifest:
                 elif "green" in statuses:
                     status = "green"
                     
-            layout_sections["investment_pillars"].append(
+            components.append(
                 UIComponent(
                     id=comp_id,
                     component_type=ComponentType.PILLAR_CARD,
@@ -133,8 +125,14 @@ def build_ui_manifest(state: SharedState) -> UIManifest:
                 )
             )
             order_idx += 1
+    return components
 
-    # Section 4 - risk_dashboard
+def build_risk_dashboard_section(state: SharedState) -> List[UIComponent]:
+    """
+    Returns the list of risk_card components for risk_dashboard.
+    Returns empty list if synthesis.key_risk_dashboard is None or empty.
+    """
+    components = []
     if state.synthesis and state.synthesis.key_risk_dashboard:
         order_idx = 0
         for risk_name, risk_val in state.synthesis.key_risk_dashboard.items():
@@ -147,7 +145,7 @@ def build_ui_manifest(state: SharedState) -> UIManifest:
                 elif rv in ["Medium", "Elevated"]: status = "yellow"
                 elif rv == "High": status = "red"
 
-            layout_sections["risk_dashboard"].append(
+            components.append(
                 UIComponent(
                     id=comp_id,
                     component_type=ComponentType.RISK_CARD,
@@ -159,6 +157,31 @@ def build_ui_manifest(state: SharedState) -> UIManifest:
                 )
             )
             order_idx += 1
+    return components
+
+def build_ui_manifest(state: SharedState) -> UIManifest:
+    if state.synthesis is None:
+        return UIManifest(layout_sections={})
+
+    layout_sections = {section: [] for section in SECTION_ORDER}
+
+    # Section 1 - executive_summary
+    layout_sections["executive_summary"].append(
+        UIComponent(
+            id="text_executive_summary",
+            component_type=ComponentType.TEXT_BLOCK,
+            size=ComponentSize.FULL,
+            data_path="synthesis.executive_summary",
+            label="Executive Summary",
+            status=None,
+            order=0
+        )
+    )
+
+    # Sections 2-4 — now delegated
+    layout_sections["key_ratios"]          = build_key_ratios_section(state)
+    layout_sections["investment_pillars"]  = build_investment_pillars_section(state)
+    layout_sections["risk_dashboard"]      = build_risk_dashboard_section(state)
 
     # Section 5 - sentiment
     if state.sentiment_result is not None and state.sentiment_result.status in ["success", "partial"]:

@@ -195,6 +195,33 @@ class UIManifest(BaseModel):
     # "sentiment", "executive_summary"
     # Values are ordered lists of UIComponent
 
+class StatePatch(BaseModel):
+    """
+    Returned for PATCH mode responses only.
+    Contains only the fields that changed — frontend merges,
+    does not replace the full dashboard state.
+    """
+    changed_paths: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Dot-notation keys mapping to new values. "
+            "e.g. {'synthesis.key_risk_dashboard.Margin / Deposit': 'Critical', "
+            "'quantitative_result.data.analysis_blocks.NIM': 'updated text'}"
+        )
+    )
+    patch_manifest: Optional[Dict[str, List["UIComponent"]]] = Field(
+        default=None,
+        description=(
+            "Only the layout_sections that changed. "
+            "Frontend merges these sections into the existing UIManifest, "
+            "does not replace the full manifest."
+        )
+    )
+    patch_summary: str = Field(
+        default="",
+        description="One sentence describing what changed. Shown in the chat panel."
+    )
+
 class SharedState(BaseModel):
     """
     The master state object that holds all context and results for a single analysis run.
@@ -265,6 +292,7 @@ class SharedState(BaseModel):
     confidence_level: str = "Low"
     synthesis: Optional['SynthesizerOutput'] = None
     ui_manifest: Optional[UIManifest] = None
+    state_patch: Optional[StatePatch] = None
 
     # Tracking
     agent_statuses: Dict[str, str] = Field(default_factory=dict)

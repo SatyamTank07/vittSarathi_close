@@ -345,6 +345,7 @@ def _build_result(state: SharedState, response_type: ResponseType, start_time: d
         "sentiment": state.sentiment.model_dump() if state.sentiment else None,
         "agent_statuses": state.agent_statuses,
         "ui_manifest": state.ui_manifest.model_dump() if state.ui_manifest else None,
+        "state_patch": state.state_patch.model_dump() if state.state_patch else None,
         "analysis_duration_seconds": round(elapsed, 1),
         "shared_state_json": state.model_dump_json(),
     }
