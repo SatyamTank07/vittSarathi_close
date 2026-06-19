@@ -42,9 +42,6 @@ class SynthesizerAgent(BaseAgent):
             elif result.status == "partial":
                 partial.append(name)
 
-        if not failed and not partial:
-            return ""
-
         lines = ["⚠ DATA QUALITY WARNINGS — READ BEFORE SYNTHESIZING:"]
         if failed:
             lines.append(
@@ -56,6 +53,36 @@ class SynthesizerAgent(BaseAgent):
                 f"PARTIAL DATA: {', '.join(partial)} returned incomplete output. "
                 f"Tag conclusions [low confidence]."
             )
+            
+        # Check macro data freshness
+        if state.sentiment and state.sentiment.macroeconomic_environment:
+            macro_env = state.sentiment.macroeconomic_environment
+            if macro_env.fetched_at:
+                from datetime import datetime, timezone
+                try:
+                    fetched = datetime.fromisoformat(macro_env.fetched_at)
+                    age_hours = (datetime.now(timezone.utc) - fetched).total_seconds() / 3600
+                    if age_hours > 24:
+                        lines.append(
+                            f"MACRO DATA NOTE: Macroeconomic data was fetched "
+                            f"{int(age_hours)} hours ago (as of {macro_env.fetched_at[:10]}). "
+                            f"Caveat any macro-dependent conclusions with the fetched date."
+                        )
+                except ValueError:
+                    pass  # unparseable timestamp, skip caveat
+            
+            # Check individual metric staleness (World Bank GDP is always annual)
+            for metric_name, metric_data in macro_env.metrics.items():
+                if isinstance(metric_data, dict) and metric_data.get("source") == "World Bank":
+                    period = metric_data.get("period", "unknown period")
+                    lines.append(
+                        f"MACRO NOTE: '{metric_name}' is from World Bank "
+                        f"(annual data, period: {period}). Do not present as current."
+                    )
+                    
+        if len(lines) == 1:
+            return ""
+
         return "\n".join(lines)
 
     # ─────────────────────────────────────────────

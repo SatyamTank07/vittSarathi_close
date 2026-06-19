@@ -6,6 +6,7 @@ from src.agents.base.shared_state import SharedState, SentimentOutput
 from src.tools.fetch_news_rss_tool import fetch_news_rss
 from src.tools.read_custom_rss_tool import read_custom_rss
 from src.tools.fetch_macro_indicators_tool import fetch_macro_indicators
+from src.tools.fetch_exchange_announcements_tool import fetch_exchange_announcements
 from .config import SentimentAndMacroConfig
 
 logger = logging.getLogger("vittsarathi.agents.sentiment_and_macro_analyst")
@@ -65,7 +66,7 @@ Please use your tools to fetch recent news and then produce your assessment as a
         prompt_text = self._build_prompt(state)
 
         # Set up tools
-        tools = [fetch_news_rss, read_custom_rss, fetch_macro_indicators]
+        tools = [fetch_news_rss, read_custom_rss, fetch_macro_indicators, fetch_exchange_announcements]
 
         # Use LangChain's generic create_tool_calling_agent
         # Alternatively, if there's a custom helper in the project, we should use it.
@@ -96,6 +97,10 @@ Please use your tools to fetch recent news and then produce your assessment as a
             parser_llm = llm.with_structured_output(SentimentOutput)
             structured = parser_llm.invoke(output_str)
             
+            if structured.macroeconomic_environment.fetched_at is None:
+                from datetime import datetime, timezone
+                structured.macroeconomic_environment.fetched_at = datetime.now(timezone.utc).isoformat()
+
             from src.agents.base.shared_state import AgentResult
             state.sentiment_result = AgentResult(
                 data=structured,

@@ -151,6 +151,10 @@ class MarketSentiment(BaseModel):
 
 class MacroeconomicEnvironment(BaseModel):
     source: str = Field(default="Various APIs")
+    fetched_at: Optional[str] = Field(
+        default=None,
+        description="ISO 8601 UTC timestamp of when macro data was fetched. Used by Synthesizer to caveat stale data."
+    )
     metrics: Dict[str, Dict[str, Any]] = Field(
         default_factory=dict,
         description="Dynamic dictionary. Keys are metric names (e.g. 'inflation'), values are dicts with 'current_value', 'trend', and 'business_impact'."

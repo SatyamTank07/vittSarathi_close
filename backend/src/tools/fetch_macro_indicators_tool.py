@@ -1,10 +1,16 @@
 import httpx
+from datetime import datetime, timezone
 from langchain_core.tools import tool
 
 # Mapping our standard indicator names to World Bank API codes
 WB_INDICATORS = {
-    "gdp_growth": "NY.GDP.MKTP.KD.ZG",
-    "inflation": "FP.CPI.TOTL.ZG"
+    "gdp_growth": "NY.GDP.MKTP.KD.ZG",      # keep — annual GDP, World Bank
+    "inflation_wb": "FP.CPI.TOTL.ZG"         # rename key, keep as fallback
+}
+
+DBIE_INDICATORS = {
+    "repo_rate": "BSR1:RBIINTR.M",
+    "inflation": "BSR1:INFL.M"
 }
 
 def get_wb_data(country_code: str, indicator_code: str) -> dict:
@@ -34,12 +40,57 @@ def get_wb_data(country_code: str, indicator_code: str) -> dict:
                     "current_value": round(current_value, 2),
                     "unit": "%",
                     "trend": trend,
-                    "source": "World Bank"
+                    "period": valid_data[0]["date"],
+                    "source": "World Bank",
+                    "fetched_at": datetime.now(timezone.utc).isoformat()
                 }
     except Exception as e:
-        return {"error": f"Failed to fetch data: {str(e)}"}
+        return {"error": f"Failed to fetch data: {str(e)}", "fetched_at": datetime.now(timezone.utc).isoformat()}
         
-    return {"error": "No valid data found"}
+    return {"error": "No valid data found", "fetched_at": datetime.now(timezone.utc).isoformat()}
+
+def get_rbi_dbie_data(series_id: str) -> dict:
+    url = f"https://dbie.rbi.org.in/DBIE/dbie.rbi?site=api"
+    try:
+        response = httpx.get(url, params={"seriesId": series_id}, timeout=10.0)
+        
+        import logging
+        logging.info(f"DBIE fetch for {series_id} returned status {response.status_code}")
+        logging.info(f"DBIE response (first 200 chars): {response.text[:200]}")
+        
+        response.raise_for_status()
+        data_json = response.json()
+        
+        valid_data = [item for item in data_json.get("data", []) if item[1] is not None]
+        
+        if len(valid_data) >= 1:
+            current_value = valid_data[0][1]
+            period = valid_data[0][0]
+            
+            trend = "Stable"
+            if len(valid_data) >= 2:
+                prev_value = valid_data[1][1]
+                if current_value > prev_value + 0.1:
+                    trend = "Increasing"
+                elif current_value < prev_value - 0.1:
+                    trend = "Decreasing"
+                    
+            return {
+                "current_value": round(current_value, 2),
+                "unit": "%",
+                "trend": trend,
+                "period": period,
+                "source": "RBI DBIE",
+                "fetched_at": datetime.now(timezone.utc).isoformat()
+            }
+        else:
+            raise ValueError("No valid data found in DBIE response")
+    except Exception as e:
+        return {
+            "error": str(e),
+            "source": "RBI DBIE",
+            "fetched_at": datetime.now(timezone.utc).isoformat()
+        }
 
 @tool
 def fetch_macro_indicators(country_code: str, indicators_needed: list[str]) -> dict:
@@ -49,7 +100,7 @@ def fetch_macro_indicators(country_code: str, indicators_needed: list[str]) -> d
     Args:
         country_code (str): The ISO 2-letter country code (e.g., 'IN' for India)
         indicators_needed (list[str]): A list of requested indicators. 
-                                       Supported values: 'gdp_growth', 'inflation', 'interest_rate'
+                                       Supported values: 'gdp_growth', 'inflation', 'repo_rate', 'inflation_wb'
                                        
     Returns:
         dict: A structured payload with current values, trends, and sources.
@@ -60,19 +111,22 @@ def fetch_macro_indicators(country_code: str, indicators_needed: list[str]) -> d
     }
     
     for indicator in indicators_needed:
-        if indicator in WB_INDICATORS:
-            wb_code = WB_INDICATORS[indicator]
+        if indicator in ["repo_rate", "inflation"]:
+            dbie_code = DBIE_INDICATORS[indicator]
+            data = get_rbi_dbie_data(dbie_code)
+            result["macro_data"][indicator] = data
+        elif indicator == "gdp_growth":
+            wb_code = WB_INDICATORS["gdp_growth"]
             data = get_wb_data(country_code, wb_code)
             result["macro_data"][indicator] = data
-        elif indicator == "interest_rate":
-            # DBIE / RBI integration has been explicitly skipped
-            result["macro_data"][indicator] = {
-                "current_value": None,
-                "unit": "%",
-                "trend": "Unknown",
-                "source": "Not Integrated (Skipped DBIE)"
-            }
+        elif indicator == "inflation_wb":
+            wb_code = WB_INDICATORS["inflation_wb"]
+            data = get_wb_data(country_code, wb_code)
+            result["macro_data"][indicator] = data
         else:
-            result["macro_data"][indicator] = {"error": "Unsupported indicator requested"}
+            result["macro_data"][indicator] = {
+                "error": "Unsupported indicator requested",
+                "fetched_at": datetime.now(timezone.utc).isoformat()
+            }
             
     return result
