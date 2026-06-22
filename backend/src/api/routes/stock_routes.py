@@ -3,10 +3,17 @@ from sqlalchemy.orm import Session
 import yfinance as yf
 import traceback
 import logging
-from pydantic import BaseModel
 
 from src.core.database.connection import get_db
-from src.agents.orchestrator.pipeline import run_analysis, save_report_to_db
+from src.agents.orchestrator.pipeline import (
+    run_analysis,
+    save_report_to_db,
+    _save_session,
+)
+# Response schemas (DashboardResponse, ChatResponse, PatchResponse, ClarificationResponse)
+# are defined in src.api.schemas as the official typed contract. They will be wired 
+# into the FastAPI route definition in a future step.
+from src.api.schemas import AnalyzeRequest
 
 router = APIRouter(prefix="/api")
 logger = logging.getLogger("vittsarathi.api.stock_routes")
@@ -107,22 +114,51 @@ def get_stock_data(ticker: str):
     return payload
 
 
-class AnalyzeRequest(BaseModel):
-    query: str
-
 @router.post("/analyze")
 async def analyze_stock(request: AnalyzeRequest, db: Session = Depends(get_db)):
     """
-    Run the full multi-agent fundamental analysis pipeline dynamically.
+    Run the multi-agent analysis pipeline.
+
+    Request body:
+        query               — natural language query (required)
+        session_id          — prior session ID for chat/patch modes (optional)
+        existing_state_hash — MD5 of frontend's current SharedState (optional)
+
+    Returns one of:
+        DashboardResponse, ChatResponse, PatchResponse, ClarificationResponse
     """
     try:
-        result = await run_analysis(request.query)
+        result = await run_analysis(
+            user_query=request.query,
+            session_id=request.session_id,
+            existing_state_hash=request.existing_state_hash,
+            db=db,
+        )
 
-        # Save to database
+        # Save report to analysis_reports table
         report_id = save_report_to_db(db, result)
         result["report_id"] = report_id
 
-        # Remove the large shared_state_json from the response (it's saved in DB)
+        # Save/update session for dashboard and patch responses
+        response_type = result.get("response_type")
+        status = result.get("status")
+
+        if status == "success" and response_type in ("dashboard", "patch"):
+            # Reconstruct minimal state object for session save
+            # We only need session_id, ticker, company_name,
+            # has_existing_dashboard, and shared_state_json
+            from src.agents.base.shared_state import SharedState
+            try:
+                # Must happen before the pop below
+                state_for_session = SharedState.model_validate_json(
+                    result.get("shared_state_json", "{}")
+                )
+                state_for_session.has_existing_dashboard = True
+                _save_session(db, state_for_session, report_id=report_id)
+            except Exception as e:
+                logger.warning(f"[route] Session save failed (non-fatal): {e}")
+
+        # Remove the large shared_state_json from the HTTP response
         result.pop("shared_state_json", None)
 
         return result

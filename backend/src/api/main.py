@@ -4,7 +4,7 @@ load_dotenv()  # Load variables from .env file if it exists
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from src.core.database.connection import engine
+from src.core.database.connection import engine, init_db
 from src.core.database import models
 from src.api.routes import stock_routes, report_routes, document_routes
 
@@ -14,10 +14,12 @@ logging.basicConfig(
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
 )
 
-# Create database tables
-models.Base.metadata.create_all(bind=engine)
-
 app = FastAPI(title="vittSarathi API — Multi-Agent Stock Analysis")
+
+@app.on_event("startup")
+def on_startup():
+    init_db()
+
 
 # Allow connections from the frontend dev server
 app.add_middleware(
