@@ -198,6 +198,8 @@ class MetadataFilter(BaseModel):
 class RoutingDecision(BaseModel):
     """Output of the query router — determines retrieval strategy."""
     tier: QueryTier
+    confidence: float = Field(default=0.7, ge=0.0, le=1.0)
+    fallback_applied: bool = False
     metadata_filters: MetadataFilter = Field(default_factory=MetadataFilter)
     retrieval_strategy: Literal[
         "pageindex_tree",    # T1: tree navigation
@@ -283,6 +285,7 @@ class SectionClassifierResponse(BaseModel):
 class QueryRouterResponse(BaseModel):
     """Structured output from the query router LLM call."""
     tier: str                                # "T1" | "T2" | "T3" | "T4"
+    confidence: float = Field(default=0.7, ge=0.0, le=1.0)
     company_id: str | None = None
     fiscal_year: int | None = None
     fiscal_years: list[int] | None = None
