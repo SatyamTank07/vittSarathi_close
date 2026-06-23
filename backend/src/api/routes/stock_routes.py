@@ -10,12 +10,12 @@ from src.agents.orchestrator.pipeline import (
     save_report_to_db,
     _save_session,
 )
+from src.api.schemas import AnalyzeRequest
+from src.utils.formatters import safe_float, safe_int
+
 # Response schemas (DashboardResponse, ChatResponse, PatchResponse, ClarificationResponse)
 # are defined in src.api.schemas as the official typed contract. They will be wired 
 # into the FastAPI route definition in a future step.
-from src.api.schemas import AnalyzeRequest
-from src.agents.orchestrator.pipeline import run_analysis, save_report_to_db
-from src.utils.formatters import safe_float, safe_int
 
 router = APIRouter(prefix="/api")
 logger = logging.getLogger("vittsarathi.api.stock_routes")
