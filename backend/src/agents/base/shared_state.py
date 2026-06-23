@@ -151,6 +151,10 @@ class MarketSentiment(BaseModel):
 
 class MacroeconomicEnvironment(BaseModel):
     source: str = Field(default="Various APIs")
+    fetched_at: Optional[str] = Field(
+        default=None,
+        description="ISO 8601 UTC timestamp of when macro data was fetched. Used by Synthesizer to caveat stale data."
+    )
     metrics: Dict[str, Dict[str, Any]] = Field(
         default_factory=dict,
         description="Dynamic dictionary. Keys are metric names (e.g. 'inflation'), values are dicts with 'current_value', 'trend', and 'business_impact'."
@@ -164,6 +168,63 @@ class SentimentOutput(BaseModel):
     market_sentiment: MarketSentiment
     macroeconomic_environment: MacroeconomicEnvironment
     sector_factors: SectorFactors
+
+class ComponentType(str, Enum):
+    METRIC_CARD     = "metric_card"      # single KPI number + label + status
+    PILLAR_CARD     = "pillar_card"      # thesis string + supporting metrics list
+    RISK_CARD       = "risk_card"        # risk name + Low/Medium/High/Elevated value
+    SENTIMENT_BLOCK = "sentiment_block"  # mood badge + themes list
+    TEXT_BLOCK      = "text_block"       # free text — exec summary, thesis paragraph
+    MACRO_BLOCK     = "macro_block"      # key-value macro indicators
+
+class ComponentSize(str, Enum):
+    SMALL  = "small"   # 1 column — single KPI
+    MEDIUM = "medium"  # 2 columns — pillar card, risk item
+    LARGE  = "large"   # 3 columns — sentiment, summary
+    FULL   = "full"    # full width — conflict log, thesis text
+
+class UIComponent(BaseModel):
+    id:             str            # unique snake_case identifier e.g. "metric_nim"
+    component_type: ComponentType
+    size:           ComponentSize
+    data_path:      str            # dot-notation path into SharedState
+    label:          str            # display label shown on card
+    status:         Optional[str] = None   # "green" | "yellow" | "red" | None
+    order:          int            # render position within its section
+
+class UIManifest(BaseModel):
+    layout_sections: Dict[str, List[UIComponent]]
+    # Keys are section names the frontend uses as headings:
+    # "key_ratios", "investment_pillars", "risk_dashboard",
+    # "sentiment", "executive_summary"
+    # Values are ordered lists of UIComponent
+
+class StatePatch(BaseModel):
+    """
+    Returned for PATCH mode responses only.
+    Contains only the fields that changed — frontend merges,
+    does not replace the full dashboard state.
+    """
+    changed_paths: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Dot-notation keys mapping to new values. "
+            "e.g. {'synthesis.key_risk_dashboard.Margin / Deposit': 'Critical', "
+            "'quantitative_result.data.analysis_blocks.NIM': 'updated text'}"
+        )
+    )
+    patch_manifest: Optional[Dict[str, List["UIComponent"]]] = Field(
+        default=None,
+        description=(
+            "Only the layout_sections that changed. "
+            "Frontend merges these sections into the existing UIManifest, "
+            "does not replace the full manifest."
+        )
+    )
+    patch_summary: str = Field(
+        default="",
+        description="One sentence describing what changed. Shown in the chat panel."
+    )
 
 class SharedState(BaseModel):
     """
@@ -185,6 +246,15 @@ class SharedState(BaseModel):
     stock_data: Dict[str, Any] = Field(default_factory=dict)
     clarification_needed: bool = False
     disambiguation_candidates: List[Dict[str, str]] = Field(default_factory=list)
+
+    orchestrator_confidence: float = Field(
+        default=1.0,
+        description=(
+            "Confidence score from the Orchestrator's entity extraction. "
+            "Copied from OrchestrationMeta.confidence_score. "
+            "Values below 0.8 trigger clarification_needed."
+        )
+    )
 
     # ─── Orchestrator Task Allocations ───
     execution_plan: Optional[ExecutionPlan] = None
@@ -234,6 +304,8 @@ class SharedState(BaseModel):
     investment_verdict: str = "Neutral"
     confidence_level: str = "Low"
     synthesis: Optional['SynthesizerOutput'] = None
+    ui_manifest: Optional[UIManifest] = None
+    state_patch: Optional[StatePatch] = None
 
     # Tracking
     agent_statuses: Dict[str, str] = Field(default_factory=dict)
@@ -268,4 +340,3 @@ class SynthesizerOutput(BaseModel):
     final_sign_off: bool = False
 
 SharedState.model_rebuild()
-

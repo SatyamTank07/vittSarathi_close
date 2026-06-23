@@ -324,11 +324,46 @@ async def run_synthesizer(state: SharedState) -> SharedState:
 
     return state
 
-def _build_result(state: SharedState, response_type: ResponseType, start_time: datetime) -> dict:
+def _build_clarification_message(candidates: list) -> str:
+    """
+    Builds the human-readable message shown in the chat panel
+    when clarification is needed.
+    """
+    if not candidates:
+        return (
+            "I couldn't confidently identify which company you meant. "
+            "Please provide a more specific name or ticker symbol."
+        )
+
+    lines = [
+        "I found multiple matches for your query. "
+        "Which company did you mean?\n"
+    ]
+    for c in candidates:
+        name = c.get("company_name", "Unknown")
+        ticker = c.get("ticker", "")
+        lines.append(f"- **{name}** ({ticker})")
+
+    return "\n".join(lines)
+
+def _build_clarification_result(
+    state: SharedState,
+    start_time: datetime
+) -> dict:
+    """
+    Returns a structured response when the Orchestrator
+    could not confidently resolve the company entity.
+    No agents have run at this point.
+    """
     elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
     return {
-        "status": "success",
-        "response_type": response_type.value,
+        "status": "clarification_needed",
+        "response_type": (
+            state.execution_plan.response_type.value
+            if state.execution_plan
+            else ResponseType.DASHBOARD.value
+        ),
+        "session_id": state.session_id,
         "user_query": state.user_query,
         "ticker": state.ticker,
         "company_name": state.company_name,
@@ -336,6 +371,36 @@ def _build_result(state: SharedState, response_type: ResponseType, start_time: d
         "industry": state.industry,
         "currency": state.currency,
         "current_price": state.current_price,
+        "orchestrator_confidence": state.orchestrator_confidence,
+        "candidates": state.disambiguation_candidates,
+        "investment_verdict": "Clarification Needed",
+        "confidence_level": "N/A",
+        "final_thesis": _build_clarification_message(state.disambiguation_candidates),
+        "quantitative": None,
+        "qualitative": None,
+        "risk_governance": None,
+        "sentiment": None,
+        "agent_statuses": state.agent_statuses,
+        "ui_manifest": None,
+        "state_patch": None,
+        "analysis_duration_seconds": round(elapsed, 1),
+        "shared_state_json": state.model_dump_json(),
+    }
+
+def _build_result(state: SharedState, response_type: ResponseType, start_time: datetime) -> dict:
+    elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+    return {
+        "status": "success",
+        "response_type": response_type.value,
+        "session_id": state.session_id,
+        "user_query": state.user_query,
+        "ticker": state.ticker,
+        "company_name": state.company_name,
+        "sector": state.sector,
+        "industry": state.industry,
+        "currency": state.currency,
+        "current_price": state.current_price,
+        "orchestrator_confidence": state.orchestrator_confidence,
         "investment_verdict": state.investment_verdict,
         "confidence_level": state.confidence_level,
         "final_thesis": state.final_thesis,
@@ -344,90 +409,214 @@ def _build_result(state: SharedState, response_type: ResponseType, start_time: d
         "risk_governance": state.risk_governance.model_dump() if state.risk_governance else None,
         "sentiment": state.sentiment.model_dump() if state.sentiment else None,
         "agent_statuses": state.agent_statuses,
+        "ui_manifest": state.ui_manifest.model_dump() if state.ui_manifest else None,
+        "state_patch": state.state_patch.model_dump() if state.state_patch else None,
         "analysis_duration_seconds": round(elapsed, 1),
         "shared_state_json": state.model_dump_json(),
     }
 
-async def run_analysis(user_query: str) -> dict:
-    logger.info(f"[pipeline] ===== Starting analysis for query: {user_query} =====")
+def _generate_state_hash(state: SharedState) -> str:
+    """MD5 hash of the SharedState JSON. Used for stale state detection."""
+    import hashlib
+    return hashlib.md5(
+        state.model_dump_json().encode("utf-8")
+    ).hexdigest()
+
+
+def _load_session(db: Session, session_id: str) -> SharedState | None:
+    """
+    Loads a prior SharedState from the ChatSession table.
+    Returns None if session_id is not found or state is unparseable.
+    """
+    from src.core.database.models import ChatSession
+    try:
+        row = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+        if row is None:
+            return None
+        if row.has_dashboard != "true":
+            return None
+        state = SharedState.model_validate_json(row.shared_state_json)
+        state.has_existing_dashboard = True
+        return state
+    except Exception as e:
+        logger.warning(f"[pipeline] Failed to load session {session_id}: {e}")
+        return None
+
+
+def _save_session(db: Session, state: SharedState, report_id: str | None = None) -> str:
+    """
+    Saves or updates a ChatSession row.
+    Returns the session_id.
+    Called after every successful dashboard or patch response.
+    """
+    from src.core.database.models import ChatSession
+    try:
+        session_id = state.session_id
+
+        existing = db.query(ChatSession).filter(
+            ChatSession.id == session_id
+        ).first()
+
+        if existing:
+            existing.shared_state_json = state.model_dump_json()
+            existing.has_dashboard = "true"
+            existing.ticker = state.ticker
+            existing.company_name = state.company_name
+            existing.last_query = state.user_query or ""
+            if report_id:
+                existing.analysis_report_id = report_id
+            existing.updated_at = datetime.now(timezone.utc)
+        else:
+            row = ChatSession(
+                id=session_id,
+                ticker=state.ticker,
+                company_name=state.company_name,
+                has_dashboard="true",
+                shared_state_json=state.model_dump_json(),
+                last_query=state.user_query or "",
+                analysis_report_id=report_id,
+            )
+            db.add(row)
+
+        db.commit()
+        return session_id
+
+    except Exception as e:
+        logger.error(f"[pipeline] Failed to save session: {e}")
+        return state.session_id
+
+
+def _check_state_hash(
+    state: SharedState,
+    existing_state_hash: str | None
+) -> bool:
+    """
+    Returns True if the frontend's state hash matches the backend's.
+    If False, the backend should return a full dashboard refresh
+    instead of a patch — the frontend is out of sync.
+    """
+    if existing_state_hash is None:
+        return True   # no hash sent — assume in sync
+    current_hash = _generate_state_hash(state)
+    return current_hash == existing_state_hash
+
+
+async def run_analysis(
+    user_query: str,
+    session_id: str | None = None,
+    existing_state_hash: str | None = None,
+    db: Session | None = None,
+) -> dict:
+    import uuid as _uuid
+    logger.info(f"[pipeline] ===== Starting analysis: '{user_query}' | session={session_id} =====")
     start_time = datetime.now(timezone.utc)
 
-    # ─── Step 1: Orchestrator ───
-    logger.info("[pipeline] Step 1: Orchestrator — extracting entity & routing")
-    state = await orchestrator.execute(user_query=user_query)
-    logger.info(f"[pipeline] Orchestrator done. Company: {state.company_name}, Industry: {state.industry}")
-
-    if state.clarification_needed:
-        logger.info("[pipeline] Ambiguous entity detected. Halting pipeline for user clarification.")
-        candidates = getattr(state, "disambiguation_candidates", [])
-        candidates_str = "\n".join([
-            f"- **{c.get('company_name', 'Unknown')}** ({c.get('ticker', '')})"
-            for c in candidates
-        ])
-        
-        msg = (
-            f"I found multiple matches for your query. "
-            f"Could you please clarify which one you meant?\n\n{candidates_str}"
-        )
-        state.final_thesis = msg
-        state.investment_verdict = "Clarification Needed"
-        
-        result = {
-            "status": "clarification_needed",
-            "response_type": getattr(state.execution_plan, "response_type", ResponseType.DASHBOARD).value if state.execution_plan else "dashboard",
-            "candidates": candidates,
-            "user_query": state.user_query,
-            "ticker": state.ticker,
-            "company_name": state.company_name,
-            "sector": state.sector,
-            "industry": state.industry,
-            "currency": state.currency,
-            "current_price": state.current_price,
-            "investment_verdict": state.investment_verdict,
-            "confidence_level": state.confidence_level,
-            "final_thesis": state.final_thesis,
-            "quantitative": None,
-            "qualitative": None,
-            "risk_governance": None,
-            "sentiment": None,
-            "agent_statuses": state.agent_statuses,
-            "analysis_duration_seconds": round((datetime.now(timezone.utc) - start_time).total_seconds(), 1),
-            "shared_state_json": state.model_dump_json(),
-        }
-        return result
-
-    # ─── Step 2: Dynamic Agent Pipeline ───
-    response_type = state.execution_plan.response_type
-    
-    if response_type == ResponseType.CHAT:
-        if not state.has_existing_dashboard:
-            logger.warning(
-                "[pipeline] CHAT requested but no existing dashboard. "
-                "Falling back to dashboard mode."
-            )
-            state = await run_pipeline(state)
-        else:
+    # ── Session: try to load prior state ──────────────────────
+    prior_state: SharedState | None = None
+    if session_id and db:
+        prior_state = _load_session(db, session_id)
+        if prior_state:
             logger.info(
-                f"[pipeline] CHAT mode — skipping all agents. "
-                f"Synthesizer will answer from existing state. "
-                f"Full chat context wired in Step 9."
+                f"[pipeline] Loaded prior session {session_id} "
+                f"for {prior_state.company_name}"
+            )
+
+    # ── Assign or generate session_id ─────────────────────────
+    # We generate it now so it can be written into SharedState
+    # before the orchestrator runs — the orchestrator won't
+    # overwrite session_id since it's not part of its output.
+    resolved_session_id = session_id or str(_uuid.uuid4())
+
+    # ─── Step 1: Orchestrator ─────────────────────────────────
+    logger.info("[pipeline] Step 1: Orchestrator")
+    state = await orchestrator.execute(user_query=user_query)
+    state.session_id = resolved_session_id
+
+    # ── Secondary confidence guard ────────────────────────────
+    if state.clarification_needed and state.execution_plan:
+        any_running = any(
+            v.should_run for v in state.execution_plan.agents.values()
+        )
+        if any_running:
+            logger.warning(
+                "[pipeline] clarification_needed=True but should_run=True found. "
+                "Forcing all agents off."
+            )
+            for agent_exec in state.execution_plan.agents.values():
+                agent_exec.should_run = False
+
+    logger.info(
+        f"[pipeline] Orchestrator done. "
+        f"Company={state.company_name}, Industry={state.industry}"
+    )
+
+    # ── Clarification short-circuit ───────────────────────────
+    if state.clarification_needed:
+        logger.warning(
+            f"[pipeline] Clarification needed | ticker={state.ticker} | "
+            f"candidates={[c.get('ticker') for c in state.disambiguation_candidates]}"
+        )
+        return _build_clarification_result(state, start_time)
+
+    # ─── Step 2: Handle response_type ─────────────────────────
+    response_type = state.execution_plan.response_type
+
+    if response_type == ResponseType.CHAT:
+        if prior_state and prior_state.has_existing_dashboard:
+            # Inject prior agent outputs into current state
+            # so Synthesizer has full context to answer from
+            state.quantitative_result  = prior_state.quantitative_result
+            state.qualitative_result   = prior_state.qualitative_result
+            state.risk_governance_result = prior_state.risk_governance_result
+            state.sentiment_result     = prior_state.sentiment_result
+            state.has_existing_dashboard = True
+            state.synthesis            = prior_state.synthesis
+            logger.info(
+                f"[pipeline] CHAT mode — prior state loaded from session "
+                f"{resolved_session_id}. Skipping agents."
             )
             state = await run_synthesizer(state)
-            
+        else:
+            logger.warning(
+                "[pipeline] CHAT requested but no prior dashboard in session. "
+                "Falling back to dashboard mode."
+            )
+            state.execution_plan.response_type = ResponseType.DASHBOARD
+            response_type = ResponseType.DASHBOARD
+            state = await run_pipeline(state)
+
     elif response_type == ResponseType.PATCH:
-        logger.info(f"[pipeline] PATCH mode — running partial pipeline.")
-        state = await run_pipeline(state)
-        
+        # Check hash — if frontend state is stale, do full dashboard
+        if prior_state and not _check_state_hash(prior_state, existing_state_hash):
+            logger.warning(
+                "[pipeline] State hash mismatch on PATCH. "
+                "Returning full dashboard refresh."
+            )
+            state.execution_plan.response_type = ResponseType.DASHBOARD
+            response_type = ResponseType.DASHBOARD
+            state = await run_pipeline(state)
+        else:
+            if prior_state:
+                state.quantitative_result    = prior_state.quantitative_result
+                state.qualitative_result     = prior_state.qualitative_result
+                state.risk_governance_result = prior_state.risk_governance_result
+                state.sentiment_result       = prior_state.sentiment_result
+                state.synthesis              = prior_state.synthesis
+                state.has_existing_dashboard = True
+            state = await run_pipeline(state)
+
     else:  # DASHBOARD
         state = await run_pipeline(state)
 
+    # ── Set has_existing_dashboard after successful dashboard/patch ──
+    if response_type in (ResponseType.DASHBOARD, ResponseType.PATCH):
+        state.has_existing_dashboard = True
+
     elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
-    logger.info(f"[pipeline] ===== Analysis complete for {state.ticker} in {elapsed:.1f}s =====")
-    
-    if state.synthesis and state.synthesis.targeted_answer:
-        logger.info(f"[pipeline] Verdict: Targeted Answer generated")
-    else:
-        logger.info(f"[pipeline] Verdict: {state.investment_verdict} (Confidence: {state.confidence_level})")
+    logger.info(
+        f"[pipeline] ===== Done: {state.ticker} in {elapsed:.1f}s | "
+        f"verdict={state.investment_verdict} ====="
+    )
 
     return _build_result(state, response_type, start_time)
 

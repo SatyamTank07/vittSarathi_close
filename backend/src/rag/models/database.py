@@ -293,6 +293,39 @@ class RAGPageIndexNode(Base):
 
 
 # ─────────────────────────────────────────────────────────────
+# Table 7: Router Classification Log — offline feedback loop
+# ─────────────────────────────────────────────────────────────
+
+class RAGRouterLog(Base):
+    """
+    Records every query router classification decision.
+    Used for offline analysis and improving tier accuracy over time.
+    One row per retrieve() call.
+    """
+
+    __tablename__ = "rag_router_log"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=_new_uuid)
+    query_text = Column(Text, nullable=False)
+    assigned_tier = Column(Text, nullable=False)        # "T1" | "T2" | "T3" | "T4"
+    confidence = Column(Integer, nullable=False)        # stored as integer 0-100
+    fallback_applied = Column(Integer, default=0)       # 0 or 1 (no bool in all PG drivers)
+    fallback_reason = Column(Text, nullable=True)       # why fallback triggered, or null
+    company_id = Column(Text, nullable=True)            # extracted by router, may be null
+    fiscal_year = Column(Integer, nullable=True)        # extracted by router, may be null
+    section_types = Column(ARRAY(Text), nullable=True)  # extracted sections
+    explanation = Column(Text, nullable=True)           # LLM's own explanation
+    routing_error = Column(Text, nullable=True)         # non-null if router threw exception
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+
+    def __repr__(self):
+        return (
+            f"<RAGRouterLog(tier={self.assigned_tier}, "
+            f"confidence={self.confidence}, query='{self.query_text[:40]}...')>"
+        )
+
+
+# ─────────────────────────────────────────────────────────────
 # Indexes (created alongside tables)
 # ─────────────────────────────────────────────────────────────
 
@@ -329,6 +362,18 @@ Index(
     "ix_rag_pageindex_parent",
     RAGPageIndexNode.document_id,
     RAGPageIndexNode.parent_id,
+)
+
+# Index for router log — primary access patterns are by tier and by date
+Index(
+    "ix_rag_router_log_tier_date",
+    RAGRouterLog.assigned_tier,
+    RAGRouterLog.created_at,
+)
+
+Index(
+    "ix_rag_router_log_confidence",
+    RAGRouterLog.confidence,
 )
 
 

@@ -1,6 +1,7 @@
 import json
 import re
 import logging
+from typing import Dict, Any, List
 from src.agents.base.base_agent import BaseAgent
 from src.agents.base.shared_state import SharedState, ResponseType
 from .config import SynthesizerConfig
@@ -56,6 +57,36 @@ class SynthesizerAgent(BaseAgent):
                 f"PARTIAL DATA: {', '.join(partial)} returned incomplete output. "
                 f"Tag conclusions [low confidence]."
             )
+            
+        # Check macro data freshness
+        if state.sentiment and state.sentiment.macroeconomic_environment:
+            macro_env = state.sentiment.macroeconomic_environment
+            if macro_env.fetched_at:
+                from datetime import datetime, timezone
+                try:
+                    fetched = datetime.fromisoformat(macro_env.fetched_at)
+                    age_hours = (datetime.now(timezone.utc) - fetched).total_seconds() / 3600
+                    if age_hours > 24:
+                        lines.append(
+                            f"MACRO DATA NOTE: Macroeconomic data was fetched "
+                            f"{int(age_hours)} hours ago (as of {macro_env.fetched_at[:10]}). "
+                            f"Caveat any macro-dependent conclusions with the fetched date."
+                        )
+                except ValueError:
+                    pass  # unparseable timestamp, skip caveat
+            
+            # Check individual metric staleness (World Bank GDP is always annual)
+            for metric_name, metric_data in macro_env.metrics.items():
+                if isinstance(metric_data, dict) and metric_data.get("source") == "World Bank":
+                    period = metric_data.get("period", "unknown period")
+                    lines.append(
+                        f"MACRO NOTE: '{metric_name}' is from World Bank "
+                        f"(annual data, period: {period}). Do not present as current."
+                    )
+                    
+        if len(lines) == 1:
+            return ""
+
         return "\n".join(lines)
 
     # ─────────────────────────────────────────────
@@ -197,8 +228,9 @@ class SynthesizerAgent(BaseAgent):
 
         sections.append("YOU ARE IN PATCH MODE.")
         sections.append(
-            "The user wants to update a specific part of the dashboard. "
-            "Only return the fields that need to change."
+            "The user wants to update a specific part of the existing dashboard. "
+            "Return ONLY the fields that need to change. "
+            "Do not rebuild the full analysis."
         )
         sections.append("")
         sections.append(f"UPDATE REQUEST: '{state.user_query}'")
@@ -210,21 +242,53 @@ class SynthesizerAgent(BaseAgent):
             sections.append("CURRENT QUANTITATIVE STATE:")
             for block_name, block_text in q.analysis_blocks.items():
                 sections.append(f"  {block_name}: {block_text}")
+
+            if q.raw_ratios:
+                sections.append(f"  Raw Ratios: {q.raw_ratios}")
             sections.append("")
 
         if state.risk_governance:
             r = state.risk_governance
             sections.append("CURRENT RISK STATE:")
             sections.append(f"  {r.overall_governance_health}")
+
+            for block_name, block_text in r.analysis_blocks.items():
+                sections.append(f"  {block_name}: {block_text}")
+            sections.append("")
+
+        if state.synthesis and state.synthesis.key_risk_dashboard:
+            sections.append("CURRENT RISK DASHBOARD:")
+            for k, v in state.synthesis.key_risk_dashboard.items():
+                sections.append(f"  {k}: {v}")
+            sections.append("")
+
+        if state.synthesis and state.synthesis.dynamic_investment_pillars:
+            sections.append("CURRENT INVESTMENT PILLARS:")
+            for p_name, p_data in state.synthesis.dynamic_investment_pillars.items():
+                sections.append(f"  {p_name}: {p_data.thesis}")
             sections.append("")
 
         sections.append("═══ YOUR TASK ═══")
         sections.append(
-            "Produce a SynthesizerOutput JSON. "
-            "Set targeted_answer to a one-sentence confirmation of what changed. "
-            "Set key_risk_dashboard with ONLY changed risk entries. "
-            "Set dynamic_investment_pillars with ONLY changed pillars. "
-            "Set investment_decision to null unless explicitly re-rated. "
+            "Return a JSON object with EXACTLY these fields and no others:\n"
+            "{\n"
+            '  "changed_risk_dashboard": {},\n'
+            '    // Dict[str, str] — only the risk entries that changed.\n'
+            '    // Keys are the exact risk names from CURRENT RISK DASHBOARD above.\n'
+            '    // Values are the new severity strings: "Low", "Medium", "High", "Elevated", "Critical".\n'
+            '    // Empty dict if no risk entries changed.\n'
+            '  "changed_pillars": {},\n'
+            '    // Dict[str, str] — only the pillars that changed.\n'
+            '    // Keys are exact pillar names from CURRENT INVESTMENT PILLARS above.\n'
+            '    // Values are the new thesis strings.\n'
+            '    // Empty dict if no pillars changed.\n'
+            '  "changed_analysis_blocks": {},\n'
+            '    // Dict[str, str] — only the analysis block entries that changed.\n'
+            '    // Keys are the exact block names from CURRENT QUANTITATIVE STATE above.\n'
+            '    // Empty dict if no analysis blocks changed.\n'
+            '  "patch_summary": ""\n'
+            '    // One sentence confirming what was updated.\n'
+            "}\n"
             "Return a single JSON object and nothing else."
         )
         return "\n".join(sections)
@@ -241,6 +305,108 @@ class SynthesizerAgent(BaseAgent):
             return self._build_patch_prompt(state)
         else:
             return self._build_dashboard_prompt(state)
+
+
+    def _build_state_patch(
+        self,
+        parsed: dict,
+        state: SharedState
+    ) -> "StatePatch":
+        """
+        Converts the LLM's patch JSON into a StatePatch object.
+        Assembles changed_paths from the three change dicts.
+        Calls manifest_builder to produce patch_manifest for
+        only the sections that changed.
+        """
+        from src.agents.base.shared_state import StatePatch
+        changed_paths: Dict[str, Any] = {}
+
+        # ── Risk dashboard changes ──
+        changed_risk = parsed.get("changed_risk_dashboard", {})
+        if isinstance(changed_risk, dict):
+            new_dashboard = None
+            if state.synthesis and state.synthesis.key_risk_dashboard is not None:
+                new_dashboard = dict(state.synthesis.key_risk_dashboard)
+                
+            for risk_name, new_val in changed_risk.items():
+                changed_paths[f"synthesis.key_risk_dashboard.{risk_name}"] = new_val
+                if new_dashboard is not None:
+                    new_dashboard[risk_name] = new_val
+                    
+            if new_dashboard is not None:
+                state.synthesis = state.synthesis.model_copy(update={"key_risk_dashboard": new_dashboard})
+
+        # ── Pillar changes ──
+        changed_pillars = parsed.get("changed_pillars", {})
+        if isinstance(changed_pillars, dict):
+            new_pillars = None
+            if state.synthesis and state.synthesis.dynamic_investment_pillars is not None:
+                new_pillars = dict(state.synthesis.dynamic_investment_pillars)
+                
+            for pillar_name, new_thesis in changed_pillars.items():
+                changed_paths[f"synthesis.dynamic_investment_pillars.{pillar_name}.thesis"] = new_thesis
+                if new_pillars is not None and pillar_name in new_pillars:
+                    old_pillar = new_pillars[pillar_name]
+                    new_pillars[pillar_name] = old_pillar.model_copy(update={"thesis": new_thesis})
+                    
+            if new_pillars is not None:
+                state.synthesis = state.synthesis.model_copy(update={"dynamic_investment_pillars": new_pillars})
+
+        # ── Analysis block changes ──
+        changed_blocks = parsed.get("changed_analysis_blocks", {})
+        if isinstance(changed_blocks, dict):
+            new_blocks = None
+            if state.quantitative and state.quantitative.analysis_blocks is not None:
+                new_blocks = dict(state.quantitative.analysis_blocks)
+                
+            for block_name, new_text in changed_blocks.items():
+                changed_paths[f"quantitative_result.data.analysis_blocks.{block_name}"] = new_text
+                if new_blocks is not None:
+                    new_blocks[block_name] = new_text
+                    
+            if new_blocks is not None:
+                new_quant = state.quantitative.model_copy(update={"analysis_blocks": new_blocks})
+                state.quantitative_result = state.quantitative_result.model_copy(update={"data": new_quant})
+
+        # ── Patch manifest: only changed sections ──
+        patch_manifest = None
+        try:
+            from src.agents.synthesizer.manifest_builder import (
+                build_risk_dashboard_section,
+                build_investment_pillars_section,
+                build_key_ratios_section,
+            )
+            changed_sections: Dict[str, List] = {}
+
+            if changed_risk:
+                risk_components = build_risk_dashboard_section(state)
+                if risk_components:
+                    changed_sections["risk_dashboard"] = risk_components
+
+            if changed_pillars:
+                pillar_components = build_investment_pillars_section(state)
+                if pillar_components:
+                    changed_sections["investment_pillars"] = pillar_components
+
+            if changed_blocks:
+                ratio_components = build_key_ratios_section(state)
+                if ratio_components:
+                    changed_sections["key_ratios"] = ratio_components
+
+            if changed_sections:
+                patch_manifest = changed_sections
+
+        except Exception as e:
+            logger.warning(
+                f"[{self.agent_name}] patch_manifest build failed (non-fatal): {e}"
+            )
+            patch_manifest = None
+
+        return StatePatch(
+            changed_paths=changed_paths,
+            patch_manifest=patch_manifest,
+            patch_summary=parsed.get("patch_summary", "Dashboard updated."),
+        )
 
     # ─────────────────────────────────────────────
     # EXECUTE
@@ -274,6 +440,7 @@ class SynthesizerAgent(BaseAgent):
             state.agent_statuses[self.agent_name] = "failed"
             return state
 
+
         try:
             clean = re.sub(r"```json|```", "", response_text).strip()
             parsed = json.loads(clean)
@@ -286,62 +453,102 @@ class SynthesizerAgent(BaseAgent):
             state.agent_statuses[self.agent_name] = "failed"
             return state
 
-        try:
-            synth_out = SynthesizerOutput(**parsed)
-        except Exception as e:
-            logger.error(f"[{self.agent_name}] SynthesizerOutput validation failed: {e}")
-            state.final_thesis = "Synthesis failed — output validation error."
-            state.investment_verdict = "Neutral"
-            state.confidence_level = "Low"
-            state.agent_statuses[self.agent_name] = "failed"
-            return state
-
-        state.synthesis = synth_out
-
-        if synth_out.investment_decision:
-            state.investment_verdict = synth_out.investment_decision.final_rating
-            state.confidence_level   = str(synth_out.investment_decision.conviction_score)
-        else:
-            state.investment_verdict = "Targeted Response"
-            state.confidence_level   = "N/A"
-
         response_type = (
             state.execution_plan.response_type
             if state.execution_plan
             else ResponseType.DASHBOARD
         )
 
-        if response_type == ResponseType.CHAT:
-            md = f"## Answer\n{synth_out.targeted_answer or synth_out.executive_summary}\n"
+        if response_type == ResponseType.PATCH:
+            # Does NOT go through SynthesizerOutput validation
+            # Handled entirely by _build_state_patch
+            try:
+                state_patch = self._build_state_patch(parsed, state)
+                state.state_patch = state_patch
 
-        elif response_type == ResponseType.PATCH:
-            md = f"## Update Applied\n{synth_out.targeted_answer or 'Dashboard updated.'}\n"
-            if synth_out.key_risk_dashboard:
-                md += "\n## Updated Risk Dashboard\n"
-                for r_name, r_val in synth_out.key_risk_dashboard.items():
-                    md += f"- **{r_name}**: {r_val}\n"
+                # ── Build final_thesis for the chat panel ──
+                md = f"## Update Applied\n{state_patch.patch_summary}\n"
+                if state_patch.changed_paths:
+                    md += "\n**Changed fields:**\n"
+                    for path in state_patch.changed_paths:
+                        md += f"- `{path}`\n"
+
+                state.final_thesis = md
+                logger.info(
+                    f"[{self.agent_name}] StatePatch built — "
+                    f"{len(state_patch.changed_paths)} changed paths, "
+                    f"patch_manifest sections: "
+                    f"{list(state_patch.patch_manifest.keys()) if state_patch.patch_manifest else []}"
+                )
+
+            except Exception as e:
+                logger.error(f"[{self.agent_name}] StatePatch build failed: {e}")
+                state.state_patch = None
+                md = f"## Update Applied\n{parsed.get('patch_summary', 'Dashboard updated.')}\n"
+                state.final_thesis = md
 
         else:
-            md = f"## Executive Summary\n{synth_out.executive_summary}\n\n"
-            if synth_out.conflict_resolution_log:
-                md += "## Conflict Resolution\n"
-                for c in synth_out.conflict_resolution_log:
-                    md += f"- **{c.conflict_identified}** (Severity: {c.severity})\n"
-                    md += f"  - {c.synthesized_resolution}\n\n"
-            if synth_out.dynamic_investment_pillars:
-                md += "## Investment Pillars\n"
-                for p_name, p_data in synth_out.dynamic_investment_pillars.items():
-                    md += f"### {p_name.replace('_', ' ').title()}\n"
-                    md += f"{p_data.thesis}\n"
-                    for m in p_data.supporting_metrics:
-                        md += f"- {m.metric}: {m.value} ({m.status})\n"
-                    md += "\n"
-            if synth_out.key_risk_dashboard:
-                md += "## Risk Dashboard\n"
-                for r_name, r_val in synth_out.key_risk_dashboard.items():
-                    md += f"- **{r_name}**: {r_val}\n"
+            # Dashboard and chat both go through SynthesizerOutput validation
+            try:
+                synth_out = SynthesizerOutput(**parsed)
+            except Exception as e:
+                logger.error(f"[{self.agent_name}] SynthesizerOutput validation failed: {e}")
+                state.final_thesis = "Synthesis failed — output validation error."
+                state.investment_verdict = "Neutral"
+                state.confidence_level = "Low"
+                state.agent_statuses[self.agent_name] = "failed"
+                return state
 
-        state.final_thesis = md
+            state.synthesis = synth_out
+
+            if synth_out.investment_decision:
+                state.investment_verdict = synth_out.investment_decision.final_rating
+                state.confidence_level   = str(synth_out.investment_decision.conviction_score)
+            else:
+                state.investment_verdict = "Targeted Response"
+                state.confidence_level   = "N/A"
+
+            if response_type == ResponseType.CHAT:
+                md = f"## Answer\n{synth_out.targeted_answer or synth_out.executive_summary}\n"
+
+            else:
+                md = f"## Executive Summary\n{synth_out.executive_summary}\n\n"
+                if synth_out.conflict_resolution_log:
+                    md += "## Conflict Resolution\n"
+                    for c in synth_out.conflict_resolution_log:
+                        md += f"- **{c.conflict_identified}** (Severity: {c.severity})\n"
+                        md += f"  - {c.synthesized_resolution}\n\n"
+                if synth_out.dynamic_investment_pillars:
+                    md += "## Investment Pillars\n"
+                    for p_name, p_data in synth_out.dynamic_investment_pillars.items():
+                        md += f"### {p_name.replace('_', ' ').title()}\n"
+                        md += f"{p_data.thesis}\n"
+                        for m in p_data.supporting_metrics:
+                            md += f"- {m.metric}: {m.value} ({m.status})\n"
+                        md += "\n"
+                if synth_out.key_risk_dashboard:
+                    md += "## Risk Dashboard\n"
+                    for r_name, r_val in synth_out.key_risk_dashboard.items():
+                        md += f"- **{r_name}**: {r_val}\n"
+
+            state.final_thesis = md
+
+            # ─── Step 10: UIManifest generation (dashboard mode only) ───
+            if response_type == ResponseType.DASHBOARD:
+                try:
+                    from src.agents.synthesizer.manifest_builder import build_ui_manifest
+                    state.ui_manifest = build_ui_manifest(state)
+                    logger.info(
+                        f"[{self.agent_name}] UIManifest built — "
+                        f"{sum(len(v) for v in state.ui_manifest.layout_sections.values())} components "
+                        f"across {len(state.ui_manifest.layout_sections)} sections"
+                    )
+                except Exception as e:
+                    logger.warning(f"[{self.agent_name}] UIManifest generation failed (non-fatal): {e}")
+                    state.ui_manifest = None
+                    # Do NOT fail the agent — manifest failure is non-fatal
+
+
         state.agent_statuses[self.agent_name] = "completed"
         logger.info(
             f"[{self.agent_name}] Done — "

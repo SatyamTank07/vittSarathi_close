@@ -18,3 +18,9 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def init_db():
+    """Creates all tables defined in models.py if they don't exist."""
+    from src.core.database.models import Base as ModelsBase
+    ModelsBase.metadata.create_all(bind=engine)

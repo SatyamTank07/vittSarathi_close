@@ -18,7 +18,7 @@ from src.rag.models.schemas import (
     ChunkMetadata
 )
 from src.rag.ingestion.embedding_service import EmbeddingService
-from src.rag.retrieval.query_router import QueryRouter
+from src.rag.retrieval.query_router import QueryRouter, log_routing_decision
 from src.rag.retrieval.reranker import CohereReranker
 from src.rag.storage.vector_store import VectorStore
 from src.rag.storage.pageindex import PageIndexStore
@@ -35,9 +35,11 @@ class HybridRetriever:
         self,
         vector_store: VectorStore,
         pageindex_store: PageIndexStore,
+        db_session=None,
     ):
         self.vector_store = vector_store
         self.pageindex_store = pageindex_store
+        self.db_session = db_session
         
         # Initialize ML components
         self.router = QueryRouter()
@@ -58,6 +60,23 @@ class HybridRetriever:
         # 1. Route the query to determine strategy
         decision = await self.router.route_query(request)
         
+        # ── Log classification decision (fire-and-forget) ────────────
+        if self.db_session is not None:
+            import asyncio
+            from functools import partial
+            
+            loop = asyncio.get_running_loop()
+            loop.run_in_executor(
+                None,
+                partial(
+                    log_routing_decision,
+                    db_session=self.db_session,
+                    query=request.query,
+                    decision=decision,
+                    fallback_reason=decision.explanation if decision.fallback_applied else None,
+                )
+            )
+
         chunks: list[ScoredChunk] = []
         
         # 2. Execute retrieval strategy

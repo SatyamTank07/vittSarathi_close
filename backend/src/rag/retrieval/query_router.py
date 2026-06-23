@@ -34,6 +34,18 @@ from src.rag.models.schemas import (
     RoutingDecision,
 )
 
+# Confidence threshold — below this, keyword fallback is checked
+CONFIDENCE_THRESHOLD = 0.7
+
+# Keywords that strongly signal a T1 structured table lookup
+T1_TABLE_KEYWORDS = {
+    "balance sheet", "profit and loss", "p&l", "eps",
+    "earnings per share", "cash flow statement", "total assets",
+    "total liabilities", "net worth", "shareholders equity",
+    "revenue from operations", "ebitda", "net profit", "pat",
+    "gross block", "depreciation", "retained earnings",
+}
+
 logger = logging.getLogger("vittsarathi.rag.retrieval.query_router")
 
 # Load prompt template
@@ -78,6 +90,9 @@ class QueryRouter:
         # Call LLM to classify query
         prompt_text = _PROMPT_TEMPLATE.render(query=request.query)
 
+        fallback_applied = False
+        fallback_reason = None
+
         try:
             response = await self.llm.ainvoke(prompt_text)
             parsed_response = self._parse_response(response.content)
@@ -85,14 +100,42 @@ class QueryRouter:
                 f"Query routed to {parsed_response.tier}: "
                 f"'{request.query[:50]}...'"
             )
+            
+            # ── Confidence threshold + T1 keyword fallback ──────────────
+            if parsed_response.confidence < CONFIDENCE_THRESHOLD:
+                query_lower = request.query.lower()
+                keyword_hit = next(
+                    (kw for kw in T1_TABLE_KEYWORDS if kw in query_lower),
+                    None
+                )
+                if keyword_hit:
+                    original_tier = parsed_response.tier
+                    parsed_response.tier = "T1"
+                    fallback_applied = True
+                    fallback_reason = (
+                        f"Confidence {parsed_response.confidence:.2f} below threshold "
+                        f"{CONFIDENCE_THRESHOLD}. Keyword '{keyword_hit}' matched. "
+                        f"Overriding {original_tier} → T1."
+                    )
+                    logger.warning(
+                        f"[QueryRouter] Low confidence fallback: {fallback_reason}"
+                    )
+                else:
+                    logger.info(
+                        f"[QueryRouter] Low confidence ({parsed_response.confidence:.2f}) "
+                        f"but no T1 keyword match. Keeping tier {parsed_response.tier}."
+                    )
         except Exception as e:
             logger.warning(
                 f"Query routing failed: {e}. Defaulting to T2 (Hybrid)."
             )
             parsed_response = QueryRouterResponse(
                 tier="T2",
+                confidence=0.0,
                 explanation=f"Fallback due to routing error: {e}",
             )
+            fallback_applied = True
+            fallback_reason = f"Router exception: {e}"
 
         # Merge extracted filters with explicit filters from the request
         filters = self._merge_filters(request, parsed_response)
@@ -102,6 +145,8 @@ class QueryRouter:
 
         return RoutingDecision(
             tier=QueryTier(parsed_response.tier),
+            confidence=parsed_response.confidence,
+            fallback_applied=fallback_applied,
             metadata_filters=filters,
             retrieval_strategy=strategy,
             explanation=parsed_response.explanation,
@@ -137,8 +182,12 @@ class QueryRouter:
         if sections:
             sections = [s for s in sections if s in SECTION_TYPES]
 
+        confidence = float(data.get("confidence", 0.7))
+        confidence = max(0.0, min(1.0, confidence))   # clamp to [0.0, 1.0]
+
         return QueryRouterResponse(
             tier=tier,
+            confidence=confidence,
             company_id=data.get("company_id"),
             fiscal_year=data.get("fiscal_year"),
             fiscal_years=data.get("fiscal_years"),
@@ -192,3 +241,34 @@ class QueryRouter:
             QueryTier.T4_TEMPORAL_SYNTHESIS: "vector_multi_doc",
         }
         return mapping[tier]
+
+def log_routing_decision(
+    db_session,
+    query: str,
+    decision: RoutingDecision,
+    fallback_reason: str | None = None,
+    routing_error: str | None = None,
+) -> None:
+    """
+    Persists a routing decision to rag_router_log.
+    Called fire-and-forget from HybridRetriever.
+    Never raises — logging must never break the retrieval path.
+    """
+    try:
+        from src.rag.models.database import RAGRouterLog
+        log_entry = RAGRouterLog(
+            query_text=query,
+            assigned_tier=decision.tier.value,
+            confidence=int(decision.confidence * 100),  # store as 0-100 int
+            fallback_applied=1 if decision.fallback_applied else 0,
+            fallback_reason=fallback_reason,
+            company_id=decision.metadata_filters.company_id,
+            fiscal_year=decision.metadata_filters.fiscal_year,
+            section_types=decision.metadata_filters.section_types,
+            explanation=decision.explanation,
+            routing_error=routing_error,
+        )
+        db_session.add(log_entry)
+        db_session.commit()
+    except Exception as e:
+        logger.error(f"[QueryRouter] Failed to log routing decision: {e}")

@@ -18,6 +18,13 @@ T4 (Temporal Synthesis):
   - Requires comparing data across MULTIPLE years or quarters (different reports).
   - Examples: "How has debt-to-equity changed over the last 3 years?", "Compare Q1 and Q3 revenue for FY24.", "What is the 5-year revenue CAGR?"
 
+Confidence scoring guide:
+  1.0 — Query maps unambiguously to exactly one tier. Single fact, explicit year, clear section.
+  0.8 — Query strongly suggests one tier but has minor ambiguity (e.g., year not stated but implied).
+  0.6 — Query could reasonably be T1 or T2, or T2 or T3. You chose based on dominant intent.
+  0.4 — Query is vague or broad. You are guessing the tier. Metadata extraction is uncertain.
+  0.0 — Query is completely unclassifiable or not about financial documents at all.
+
 Also extract any metadata filters you can identify from the query:
 - company_id: Stock ticker or company name (e.g., "RIL", "TCS", "INFY", "Reliance")
 - fiscal_year: A specific fiscal year (e.g., 2024, 2023)
@@ -29,6 +36,7 @@ Query: {{ query }}
 Respond with valid JSON only:
 {
   "tier": "T1|T2|T3|T4",
+  "confidence": 0.0,
   "company_id": "...",
   "fiscal_year": null,
   "fiscal_years": null,
