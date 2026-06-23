@@ -4,7 +4,6 @@ import logging
 from typing import Dict, Any, List
 from src.agents.base.base_agent import BaseAgent
 from src.agents.base.shared_state import SharedState, ResponseType
-
 from .config import SynthesizerConfig
 
 logger = logging.getLogger("vittsarathi.agents.synthesizer")
@@ -21,6 +20,8 @@ class SynthesizerAgent(BaseAgent):
 
     # ─────────────────────────────────────────────
     # CAVEAT BLOCK
+    # Tells the LLM what data is missing so it
+    # does not hallucinate failed agent output.
     # ─────────────────────────────────────────────
 
     def _build_caveat_block(self, state: SharedState) -> str:
@@ -41,6 +42,9 @@ class SynthesizerAgent(BaseAgent):
                 failed.append(name)
             elif result.status == "partial":
                 partial.append(name)
+
+        if not failed and not partial:
+            return ""
 
         lines = ["⚠ DATA QUALITY WARNINGS — READ BEFORE SYNTHESIZING:"]
         if failed:
@@ -238,6 +242,7 @@ class SynthesizerAgent(BaseAgent):
             sections.append("CURRENT QUANTITATIVE STATE:")
             for block_name, block_text in q.analysis_blocks.items():
                 sections.append(f"  {block_name}: {block_text}")
+
             if q.raw_ratios:
                 sections.append(f"  Raw Ratios: {q.raw_ratios}")
             sections.append("")
@@ -246,6 +251,7 @@ class SynthesizerAgent(BaseAgent):
             r = state.risk_governance
             sections.append("CURRENT RISK STATE:")
             sections.append(f"  {r.overall_governance_health}")
+
             for block_name, block_text in r.analysis_blocks.items():
                 sections.append(f"  {block_name}: {block_text}")
             sections.append("")
@@ -299,6 +305,7 @@ class SynthesizerAgent(BaseAgent):
             return self._build_patch_prompt(state)
         else:
             return self._build_dashboard_prompt(state)
+
 
     def _build_state_patch(
         self,
@@ -433,6 +440,7 @@ class SynthesizerAgent(BaseAgent):
             state.agent_statuses[self.agent_name] = "failed"
             return state
 
+
         try:
             clean = re.sub(r"```json|```", "", response_text).strip()
             parsed = json.loads(clean)
@@ -539,6 +547,7 @@ class SynthesizerAgent(BaseAgent):
                     logger.warning(f"[{self.agent_name}] UIManifest generation failed (non-fatal): {e}")
                     state.ui_manifest = None
                     # Do NOT fail the agent — manifest failure is non-fatal
+
 
         state.agent_statuses[self.agent_name] = "completed"
         logger.info(

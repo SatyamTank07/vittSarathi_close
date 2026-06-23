@@ -9,6 +9,6 @@ with open(prompt_path, "r", encoding="utf-8") as f:
 SynthesizerConfig = {
     "name": "synthesizer",
     "model": "gpt-4o-mini",
-    "max_tokens": 700,
+    "max_tokens": 2500,        # raised from 700 — dashboard synthesis needs room
     "system_prompt": system_prompt
 }

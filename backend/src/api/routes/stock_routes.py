@@ -14,6 +14,8 @@ from src.agents.orchestrator.pipeline import (
 # are defined in src.api.schemas as the official typed contract. They will be wired 
 # into the FastAPI route definition in a future step.
 from src.api.schemas import AnalyzeRequest
+from src.agents.orchestrator.pipeline import run_analysis, save_report_to_db
+from src.utils.formatters import safe_float, safe_int
 
 router = APIRouter(prefix="/api")
 logger = logging.getLogger("vittsarathi.api.stock_routes")
@@ -61,22 +63,6 @@ def get_stock_data(ticker: str):
             status_code=404,
             detail=f"Stock ticker '{ticker}' not found or no data available."
         )
-
-    def safe_float(val):
-        if val is None:
-            return None
-        try:
-            return float(val)
-        except (ValueError, TypeError):
-            return None
-
-    def safe_int(val):
-        if val is None:
-            return None
-        try:
-            return int(val)
-        except (ValueError, TypeError):
-            return None
 
     payload = {
         "symbol": info.get("symbol", ticker),
