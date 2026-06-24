@@ -1,5 +1,6 @@
 import React from 'react';
 import AgentCard from './AgentCard';
+import DashboardGrid from './DashboardGrid';
 
 interface AnalysisReportProps {
   data: any;
@@ -61,80 +62,88 @@ const AnalysisReport: React.FC<AnalysisReportProps> = ({ data, highlightedCards 
         </div>
       </div>
 
-      {/* ═══ Agent Cards Grid ═══ */}
-      <div className="agent-cards-grid">
-        {/* Quantitative Agent */}
-        {data.quantitative && (
-          <AgentCard
-            id="card-quant"
-            icon="📊"
-            title="Quantitative Analysis"
-            subtitle={`The Accountant — ${data.quantitative.industry_framework_used || 'Financial Metrics'}`}
-            status={data.agent_statuses?.quantitative === 'completed' ? 'completed' : 'idle'}
-            isHighlighted={highlightedCards.has('card-quant')}
-            accentClass="quant"
-            data={{
-              ...data.quantitative.analysis_blocks,
-              ...(data.quantitative.raw_ratios && { 'Key Ratios': data.quantitative.raw_ratios }),
-              ...(data.quantitative.overall_quantitative_health && { overall_quantitative_health: data.quantitative.overall_quantitative_health }),
-            }}
-          />
-        )}
-
-        {/* Qualitative Agent */}
-        {data.qualitative && (
-          <AgentCard
-            id="card-qual"
-            icon="💡"
-            title="Qualitative Assessment"
-            subtitle="The Strategist — Moat & Narrative"
-            status={data.agent_statuses?.qualitative === 'completed' ? 'completed' : 'idle'}
-            isHighlighted={highlightedCards.has('card-qual')}
-            accentClass="qual"
-            data={{
-              'Competitive Moat': data.qualitative.moat_analysis,
-              'Management Quality': data.qualitative.management_quality,
-              'Growth Catalysts': data.qualitative.growth_catalysts,
-              'Business Model': data.qualitative.business_model,
-              'The "Why" Behind Numbers': data.qualitative.narrative_explanation,
-            }}
-          />
-        )}
-
-        {/* Risk & Governance Agent */}
-        {data.risk_governance && (
-          <AgentCard
-            id="card-risk"
-            icon="🛡️"
-            title="Risk & Governance"
-            subtitle={`The Investigator — ${data.risk_governance.industry_framework_used || 'Risk Assessment'}`}
-            status={data.agent_statuses?.risk_governance === 'completed' ? 'completed' : 'idle'}
-            isHighlighted={highlightedCards.has('card-risk')}
-            accentClass="risk"
-            data={{
-              ...data.risk_governance.analysis_blocks,
-              ...(data.risk_governance.raw_metrics && { 'Governance Metrics': data.risk_governance.raw_metrics }),
-              ...(data.risk_governance.overall_governance_health && { overall_governance_health: data.risk_governance.overall_governance_health }),
-            }}
-          />
-        )}
-
-        {/* Synthesizer Agent */}
-        <AgentCard
-          id="card-synth"
-          icon="📝"
-          title="Synthesizer — CIO Report"
-          subtitle="Chief Investment Officer — Final Verdict"
-          status={data.agent_statuses?.synthesizer === 'completed' ? 'completed' : 'idle'}
-          isHighlighted={highlightedCards.has('card-synth')}
-          accentClass="synth"
-          data={{
-            'Investment Rating': data.investment_verdict || 'N/A',
-            'Conviction Score': data.confidence_level ? `${(parseFloat(data.confidence_level) * 100).toFixed(0)}%` : 'N/A',
-            'Analysis Duration': data.analysis_duration_seconds ? `${data.analysis_duration_seconds}s` : 'N/A',
-          }}
+      {/* ═══ Dynamic Dashboard Grid ═══ */}
+      {data.ui_manifest ? (
+        <DashboardGrid
+          uiManifest={data.ui_manifest}
+          dashboardData={data}
         />
-      </div>
+      ) : (
+        // fallback — old hardcoded cards when no manifest present (dev/dummy data)
+        <div className="agent-cards-grid">
+          {/* Quantitative Agent */}
+          {data.quantitative && (
+            <AgentCard
+              id="card-quant"
+              icon="📊"
+              title="Quantitative Analysis"
+              subtitle={`The Accountant — ${data.quantitative.industry_framework_used || 'Financial Metrics'}`}
+              status={data.agent_statuses?.quantitative === 'completed' ? 'completed' : 'idle'}
+              isHighlighted={highlightedCards.has('card-quant')}
+              accentClass="quant"
+              data={{
+                ...data.quantitative.analysis_blocks,
+                ...(data.quantitative.raw_ratios && { 'Key Ratios': data.quantitative.raw_ratios }),
+                ...(data.quantitative.overall_quantitative_health && { overall_quantitative_health: data.quantitative.overall_quantitative_health }),
+              }}
+            />
+          )}
+
+          {/* Qualitative Agent */}
+          {data.qualitative && (
+            <AgentCard
+              id="card-qual"
+              icon="💡"
+              title="Qualitative Assessment"
+              subtitle="The Strategist — Moat & Narrative"
+              status={data.agent_statuses?.qualitative === 'completed' ? 'completed' : 'idle'}
+              isHighlighted={highlightedCards.has('card-qual')}
+              accentClass="qual"
+              data={{
+                'Competitive Moat': data.qualitative.moat_analysis,
+                'Management Quality': data.qualitative.management_quality,
+                'Growth Catalysts': data.qualitative.growth_catalysts,
+                'Business Model': data.qualitative.business_model,
+                'The "Why" Behind Numbers': data.qualitative.narrative_explanation,
+              }}
+            />
+          )}
+
+          {/* Risk & Governance Agent */}
+          {data.risk_governance && (
+            <AgentCard
+              id="card-risk"
+              icon="🛡️"
+              title="Risk & Governance"
+              subtitle={`The Investigator — ${data.risk_governance.industry_framework_used || 'Risk Assessment'}`}
+              status={data.agent_statuses?.risk_governance === 'completed' ? 'completed' : 'idle'}
+              isHighlighted={highlightedCards.has('card-risk')}
+              accentClass="risk"
+              data={{
+                ...data.risk_governance.analysis_blocks,
+                ...(data.risk_governance.raw_metrics && { 'Governance Metrics': data.risk_governance.raw_metrics }),
+                ...(data.risk_governance.overall_governance_health && { overall_governance_health: data.risk_governance.overall_governance_health }),
+              }}
+            />
+          )}
+
+          {/* Synthesizer Agent */}
+          <AgentCard
+            id="card-synth"
+            icon="📝"
+            title="Synthesizer — CIO Report"
+            subtitle="Chief Investment Officer — Final Verdict"
+            status={data.agent_statuses?.synthesizer === 'completed' ? 'completed' : 'idle'}
+            isHighlighted={highlightedCards.has('card-synth')}
+            accentClass="synth"
+            data={{
+              'Investment Rating': data.investment_verdict || 'N/A',
+              'Conviction Score': data.confidence_level ? `${(parseFloat(data.confidence_level) * 100).toFixed(0)}%` : 'N/A',
+              'Analysis Duration': data.analysis_duration_seconds ? `${data.analysis_duration_seconds}s` : 'N/A',
+            }}
+          />
+        </div>
+      )}
 
       {/* ═══ Final Thesis ═══ */}
       {data.final_thesis && (
