@@ -3,7 +3,8 @@ import './App.css';
 import Header from './components/Header';
 import AnalysisReport from './components/AnalysisReport';
 import ChatBar from './components/ChatBar';
-
+// @ts-ignore
+import { useAnalysis } from './hooks/useAnalysis';
 // ═══ Dummy Data — matches backend SharedState schema ═══
 const dummyAnalysisData = {
   ticker: "TCS.NS",
@@ -74,41 +75,26 @@ const dummyAnalysisData = {
 
 function App() {
   const [chatInput, setChatInput] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const [analysisData, setAnalysisData] = useState<any>(dummyAnalysisData);
   const [highlightedCards, setHighlightedCards] = useState<Set<string>>(new Set());
-  const [agentStep, setAgentStep] = useState<string>('idle');
+
+  const {
+    dashboardData,
+    chatHistory,
+    loading,
+    error,
+    agentStatuses,
+    clarificationNeeded,
+    clarificationCandidates,
+    clarificationMessage,
+    submitQuery,
+    resolveClarification,
+  } = useAnalysis();
 
   // Simulate agent analysis when user submits a query
   const handleChatSubmit = () => {
-    const query = chatInput.trim();
-    if (!query) return;
-
-    setLoading(true);
-    setError(null);
-    setAgentStep('orchestrator');
+    if (!chatInput.trim()) return;
+    submitQuery(chatInput);
     setChatInput('');
-
-    // Simulate agent pipeline progress
-    setTimeout(() => setAgentStep('parallel'), 1500);
-    setTimeout(() => setAgentStep('synthesizer'), 4000);
-
-    // Simulate completion after 5.5 seconds
-    setTimeout(() => {
-      setLoading(false);
-      setAgentStep('idle');
-      setAnalysisData(dummyAnalysisData);
-
-      // Highlight all cards
-      const cardIds = new Set(['card-quant', 'card-qual', 'card-risk', 'card-synth']);
-      setHighlightedCards(cardIds);
-
-      // Remove highlights after animation completes
-      setTimeout(() => {
-        setHighlightedCards(new Set());
-      }, 3000);
-    }, 5500);
   };
 
   return (
@@ -121,33 +107,27 @@ function App() {
           <div className="analysis-loading animate-fade-in">
             <div className="analysis-spinner" />
             <h2>Analyzing...</h2>
-            <p>5 AI agents are working in parallel</p>
+            <p>AI agents are working...</p>
             <div className="agent-progress">
-              <div className={`agent-step ${agentStep === 'orchestrator' ? 'active' : agentStep !== 'idle' ? 'done' : ''}`}>
-                <span className="agent-step-icon">🎯</span>
-                <span>Orchestrator — Fetching data & classifying industry</span>
-                <div className="agent-step-dot" />
-              </div>
-              <div className={`agent-step ${agentStep === 'parallel' ? 'active' : agentStep === 'synthesizer' ? 'done' : ''}`}>
-                <span className="agent-step-icon">📊</span>
-                <span>Quantitative Agent — Crunching numbers</span>
-                <div className="agent-step-dot" />
-              </div>
-              <div className={`agent-step ${agentStep === 'parallel' ? 'active' : agentStep === 'synthesizer' ? 'done' : ''}`}>
-                <span className="agent-step-icon">💡</span>
-                <span>Qualitative Agent — Analyzing moat & strategy</span>
-                <div className="agent-step-dot" />
-              </div>
-              <div className={`agent-step ${agentStep === 'parallel' ? 'active' : agentStep === 'synthesizer' ? 'done' : ''}`}>
-                <span className="agent-step-icon">🛡️</span>
-                <span>Risk Agent — Investigating red flags</span>
-                <div className="agent-step-dot" />
-              </div>
-              <div className={`agent-step ${agentStep === 'synthesizer' ? 'active' : ''}`}>
-                <span className="agent-step-icon">📝</span>
-                <span>Synthesizer — Compiling investment thesis</span>
-                <div className="agent-step-dot" />
-              </div>
+              {Object.entries(agentStatuses || {}).map(([agent, status]) => {
+                const getIcon = (name: string) => {
+                  if (name.includes('orchestrator')) return '🎯';
+                  if (name.includes('quantitative')) return '📊';
+                  if (name.includes('qualitative')) return '💡';
+                  if (name.includes('risk')) return '🛡️';
+                  if (name.includes('synthesizer')) return '📝';
+                  return '⚙️';
+                };
+                return (
+                  <div key={agent} className={`agent-step ${status === 'running' ? 'active' : status === 'completed' ? 'done' : ''}`}>
+                    <span className="agent-step-icon">{getIcon(agent)}</span>
+                    <span>
+                      {agent.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())} — {status as string}
+                    </span>
+                    <div className="agent-step-dot" />
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -170,8 +150,28 @@ function App() {
         )}
 
         {/* Analysis Results */}
-        {analysisData && !loading && (
-          <AnalysisReport data={analysisData} highlightedCards={highlightedCards} />
+        {(dashboardData ?? dummyAnalysisData) && !loading && !clarificationNeeded && (
+          <AnalysisReport data={dashboardData ?? dummyAnalysisData} highlightedCards={highlightedCards} />
+        )}
+
+        {/* Clarification Needed */}
+        {clarificationNeeded && (
+          <div className="clarification-card animate-fade-in" style={{ padding: '2rem', textAlign: 'center' }}>
+            <h3>Clarification Needed</h3>
+            <p>{clarificationMessage}</p>
+            <div className="clarification-candidates" style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginTop: '1rem' }}>
+              {clarificationCandidates.map((c: any, idx: number) => (
+                <button
+                  key={idx}
+                  className="clarification-btn"
+                  style={{ padding: '0.5rem 1rem', borderRadius: '4px', border: '1px solid #ccc', background: '#f5f5f5', cursor: 'pointer', color: '#333' }}
+                  onClick={() => resolveClarification(c.ticker, c.company_name)}
+                >
+                  {c.company_name} ({c.ticker})
+                </button>
+              ))}
+            </div>
+          </div>
         )}
       </main>
 
