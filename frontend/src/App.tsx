@@ -2,7 +2,7 @@ import { useState } from 'react';
 import './App.css';
 import Header from './components/Header';
 import AnalysisReport from './components/AnalysisReport';
-import ChatBar from './components/ChatBar';
+import ChatPanel from './components/ChatPanel';
 // @ts-ignore
 import { useAnalysis } from './hooks/useAnalysis';
 // ═══ Dummy Data — matches backend SharedState schema ═══
@@ -74,7 +74,6 @@ const dummyAnalysisData = {
 };
 
 function App() {
-  const [chatInput, setChatInput] = useState<string>('');
   const [highlightedCards, setHighlightedCards] = useState<Set<string>>(new Set());
 
   const {
@@ -88,14 +87,8 @@ function App() {
     clarificationMessage,
     submitQuery,
     resolveClarification,
+    sessionId,
   } = useAnalysis();
-
-  // Simulate agent analysis when user submits a query
-  const handleChatSubmit = () => {
-    if (!chatInput.trim()) return;
-    submitQuery(chatInput);
-    setChatInput('');
-  };
 
   return (
     <div className="app-container">
@@ -154,33 +147,17 @@ function App() {
           <AnalysisReport data={dashboardData ?? dummyAnalysisData} highlightedCards={highlightedCards} />
         )}
 
-        {/* Clarification Needed */}
-        {clarificationNeeded && (
-          <div className="clarification-card animate-fade-in" style={{ padding: '2rem', textAlign: 'center' }}>
-            <h3>Clarification Needed</h3>
-            <p>{clarificationMessage}</p>
-            <div className="clarification-candidates" style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginTop: '1rem' }}>
-              {clarificationCandidates.map((c: any, idx: number) => (
-                <button
-                  key={idx}
-                  className="clarification-btn"
-                  style={{ padding: '0.5rem 1rem', borderRadius: '4px', border: '1px solid #ccc', background: '#f5f5f5', cursor: 'pointer', color: '#333' }}
-                  onClick={() => resolveClarification(c.ticker, c.company_name)}
-                >
-                  {c.company_name} ({c.ticker})
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </main>
 
-      {/* Sticky Bottom Chat Bar */}
-      <ChatBar
-        value={chatInput}
-        onChange={setChatInput}
-        onSubmit={handleChatSubmit}
+      <ChatPanel
+        chatHistory={chatHistory}
         loading={loading}
+        clarificationNeeded={clarificationNeeded}
+        clarificationCandidates={clarificationCandidates}
+        clarificationMessage={clarificationMessage}
+        onSubmit={submitQuery}
+        onResolveClarification={resolveClarification}
+        sessionId={sessionId}
       />
     </div>
   );
