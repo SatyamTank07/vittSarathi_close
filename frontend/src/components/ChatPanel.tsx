@@ -79,18 +79,29 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             <div className="chat-bubble chat-bubble-assistant chat-bubble-clarification">
               <div className="chat-bubble-label">VittSarathi</div>
               <p className="chat-clarification-message">{clarificationMessage}</p>
-              <div className="chat-clarification-options">
-                {clarificationCandidates.map((c, idx) => (
-                  <button
-                    key={idx}
-                    className="chat-clarification-btn"
-                    onClick={() => onResolveClarification(c.ticker, c.company_name)}
-                  >
-                    <span className="chat-clarification-company">{c.company_name}</span>
-                    <span className="chat-clarification-ticker">{c.ticker}</span>
-                  </button>
-                ))}
-              </div>
+
+              {clarificationCandidates.length > 0 ? (
+                <>
+                  <p className="chat-clarification-hint">Tap a company to continue:</p>
+                  <div className="chat-clarification-options">
+                    {clarificationCandidates.map((c, idx) => (
+                      <button
+                        key={idx}
+                        className="chat-clarification-btn"
+                        onClick={() => onResolveClarification(c.ticker, c.company_name)}
+                        disabled={loading}
+                      >
+                        <span className="chat-clarification-company">{c.company_name}</span>
+                        <span className="chat-clarification-ticker">{c.ticker}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <p className="chat-clarification-hint">
+                  Please try again with a more specific company name or ticker.
+                </p>
+              )}
             </div>
           )}
 

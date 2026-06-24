@@ -143,7 +143,7 @@ function App() {
         )}
 
         {/* Analysis Results */}
-        {(dashboardData ?? dummyAnalysisData) && !loading && !clarificationNeeded && (
+        {!clarificationNeeded && !loading && (dashboardData ?? dummyAnalysisData) && (
           <AnalysisReport data={dashboardData ?? dummyAnalysisData} highlightedCards={highlightedCards} />
         )}
 

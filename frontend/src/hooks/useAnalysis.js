@@ -63,7 +63,9 @@ function reducer(state, action) {
         ...state,
         loading: true,
         error: null,
-        clarificationNeeded: false
+        clarificationNeeded: false,
+        clarificationCandidates: [],
+        clarificationMessage: '',
       };
 
     case 'DASHBOARD_SUCCESS':
