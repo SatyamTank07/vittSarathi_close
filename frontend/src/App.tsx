@@ -6,6 +6,7 @@ import ChatPanel from './components/ChatPanel';
 import AgentProgressStrip from './components/AgentProgressStrip';
 // @ts-ignore
 import { useAnalysis } from './hooks/useAnalysis';
+import { useHealthCheck } from './hooks/useHealthCheck';
 // ═══ Dummy Data — matches backend SharedState schema ═══
 const dummyAnalysisData = {
   ticker: "TCS.NS",
@@ -75,6 +76,7 @@ const dummyAnalysisData = {
 };
 
 function App() {
+  const { isOnline } = useHealthCheck();
   const {
     dashboardData,
     chatHistory,
@@ -93,7 +95,7 @@ function App() {
 
   return (
     <div className="app-container">
-      <Header />
+      <Header isOnline={isOnline} />
 
       <main className="app-main-content">
         {/* Loading State */}
@@ -138,6 +140,7 @@ function App() {
         onSubmit={submitQuery}
         onResolveClarification={resolveClarification}
         sessionId={sessionId}
+        isOnline={isOnline}
       />
     </div>
   );

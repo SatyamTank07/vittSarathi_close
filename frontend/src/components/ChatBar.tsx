@@ -5,6 +5,7 @@ interface ChatBarProps {
   onChange: (val: string) => void;
   onSubmit: () => void;
   loading: boolean;
+  disabled?: boolean;
   placeholder?: string;
 }
 
@@ -13,10 +14,11 @@ const ChatBar: React.FC<ChatBarProps> = ({
   onChange,
   onSubmit,
   loading,
+  disabled = false,
   placeholder = "Ask about any stock... e.g. 'Analyze RELIANCE'",
 }) => {
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && !loading && value.trim()) {
+    if (e.key === 'Enter' && !loading && !disabled && value.trim()) {
       onSubmit();
     }
   };
@@ -32,12 +34,12 @@ const ChatBar: React.FC<ChatBarProps> = ({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={loading}
+            disabled={loading || disabled}
           />
           <button
             className="chat-bar-btn"
             onClick={onSubmit}
-            disabled={loading || !value.trim()}
+            disabled={loading || disabled || !value.trim()}
           >
             {loading ? (
               <span className="btn-spinner" />

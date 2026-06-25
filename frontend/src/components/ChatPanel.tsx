@@ -14,6 +14,7 @@ interface ChatPanelProps {
   onSubmit: (query: string) => void;
   onResolveClarification: (ticker: string, companyName: string) => void;
   sessionId: string | null;
+  isOnline: boolean;
 }
 
 const ChatPanel: React.FC<ChatPanelProps> = ({
@@ -24,7 +25,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   clarificationMessage,
   onSubmit,
   onResolveClarification,
-  sessionId
+  sessionId,
+  isOnline
 }) => {
   const [inputValue, setInputValue] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -122,7 +124,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             onChange={setInputValue}
             onSubmit={handleSubmit}
             loading={loading}
+            disabled={!isOnline}
           />
+          {!isOnline && (
+            <div style={{ textAlign: 'center', marginTop: '8px' }}>
+              <span style={{ fontSize: '12px', color: '#ef4444' }}>Backend offline — reconnecting...</span>
+            </div>
+          )}
         </div>
       </div>
     </div>
