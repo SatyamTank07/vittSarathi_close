@@ -4,6 +4,7 @@ import Header from './components/Header';
 import AnalysisReport from './components/AnalysisReport';
 import ChatPanel from './components/ChatPanel';
 import AgentProgressStrip from './components/AgentProgressStrip';
+import UploadPanel from './components/UploadPanel';
 // @ts-ignore
 import { useAnalysis } from './hooks/useAnalysis';
 import { useHealthCheck } from './hooks/useHealthCheck';
@@ -98,6 +99,8 @@ function App() {
       <Header isOnline={isOnline} />
 
       <main className="app-main-content">
+        <UploadPanel isOnline={isOnline} />
+
         {/* Loading State */}
         {loading && (
           <AgentProgressStrip
