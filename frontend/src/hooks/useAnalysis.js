@@ -15,6 +15,7 @@ const initialState = {
 
   // response type of the last response
   lastResponseType: null,       // 'dashboard' | 'chat' | 'patch' | null
+  lastRequestedType: null,      // 'dashboard' | 'patch' | 'chat' — what we expected to get back
 
   // loading and error
   loading: false,
@@ -149,6 +150,21 @@ function reducer(state, action) {
         ]
       };
 
+    case 'ADD_ASSISTANT_MESSAGE':
+      return {
+        ...state,
+        chatHistory: [
+          ...state.chatHistory,
+          { role: 'assistant', content: action.payload.content, type: action.payload.type }
+        ]
+      };
+
+    case 'SET_EXPECTED_TYPE':
+      return {
+        ...state,
+        lastRequestedType: action.payload
+      };
+
     default:
       return state;
   }
@@ -196,6 +212,14 @@ export function useAnalysis() {
     // 2. start loading
     dispatch({ type: 'SUBMIT_START' });
 
+    const expectedType = !state.sessionId
+      ? 'dashboard'                          // no session yet — always a fresh dashboard
+      : state.existingStateHash
+        ? 'patch'                            // session exists and we have a hash — could be patch
+        : 'dashboard';                       // session exists but no hash — treat as dashboard
+
+    dispatch({ type: 'SET_EXPECTED_TYPE', payload: expectedType });
+
     startSimulation();
 
     try {
@@ -216,6 +240,21 @@ export function useAnalysis() {
         return;
       }
 
+      if (response.response_type === 'dashboard' && expectedType === 'patch') {
+        // Backend rejected our hash — it returned a full refresh instead of a patch.
+        // Accept it gracefully — dispatch DASHBOARD_SUCCESS as normal,
+        // but also add a chat message explaining the refresh.
+        dispatch({ type: 'DASHBOARD_SUCCESS', payload: response });
+        dispatch({
+          type: 'ADD_ASSISTANT_MESSAGE',
+          payload: {
+            content: 'Dashboard refreshed — your session state was out of sync with the server.',
+            type: 'patch_confirm'
+          }
+        });
+        return;
+      }
+
       if (response.response_type === 'dashboard') {
         dispatch({ type: 'DASHBOARD_SUCCESS', payload: response });
         return;
@@ -227,6 +266,12 @@ export function useAnalysis() {
       }
 
       if (response.response_type === 'patch') {
+        if (!state.dashboardData) {
+          // No dashboard to patch into — treat it as a full dashboard instead
+          // This is a safety net; should never happen in normal flow
+          dispatch({ type: 'DASHBOARD_SUCCESS', payload: response });
+          return;
+        }
         dispatch({ type: 'PATCH_SUCCESS', payload: response });
         return;
       }
@@ -251,6 +296,7 @@ export function useAnalysis() {
     error:                    state.error,
     agentStatuses:            state.agentStatuses,
     lastResponseType:         state.lastResponseType,
+    lastRequestedType:        state.lastRequestedType,
     clarificationNeeded:      state.clarificationNeeded,
     clarificationCandidates:  state.clarificationCandidates,
     clarificationMessage:     state.clarificationMessage,
