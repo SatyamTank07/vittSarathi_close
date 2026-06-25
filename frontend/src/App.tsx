@@ -3,6 +3,7 @@ import './App.css';
 import Header from './components/Header';
 import AnalysisReport from './components/AnalysisReport';
 import ChatPanel from './components/ChatPanel';
+import AgentProgressStrip from './components/AgentProgressStrip';
 // @ts-ignore
 import { useAnalysis } from './hooks/useAnalysis';
 // ═══ Dummy Data — matches backend SharedState schema ═══
@@ -80,6 +81,7 @@ function App() {
     loading,
     error,
     agentStatuses,
+    simulatedStatuses,
     clarificationNeeded,
     clarificationCandidates,
     clarificationMessage,
@@ -96,32 +98,11 @@ function App() {
       <main className="app-main-content">
         {/* Loading State */}
         {loading && (
-          <div className="analysis-loading animate-fade-in">
-            <div className="analysis-spinner" />
-            <h2>Analyzing...</h2>
-            <p>AI agents are working...</p>
-            <div className="agent-progress">
-              {Object.entries(agentStatuses || {}).map(([agent, status]) => {
-                const getIcon = (name: string) => {
-                  if (name.includes('orchestrator')) return '🎯';
-                  if (name.includes('quantitative')) return '📊';
-                  if (name.includes('qualitative')) return '💡';
-                  if (name.includes('risk')) return '🛡️';
-                  if (name.includes('synthesizer')) return '📝';
-                  return '⚙️';
-                };
-                return (
-                  <div key={agent} className={`agent-step ${status === 'running' ? 'active' : status === 'completed' ? 'done' : ''}`}>
-                    <span className="agent-step-icon">{getIcon(agent)}</span>
-                    <span>
-                      {agent.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())} — {status as string}
-                    </span>
-                    <div className="agent-step-dot" />
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          <AgentProgressStrip
+            simulatedStatuses={simulatedStatuses}
+            realStatuses={agentStatuses || {}}
+            loading={loading}
+          />
         )}
 
         {/* Error State */}

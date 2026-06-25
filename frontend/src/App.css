@@ -590,6 +590,35 @@
   background: var(--success);
 }
 
+/* Error state for agent steps */
+.agent-step.error .agent-step-dot {
+  background: var(--danger);
+}
+
+.agent-step.error {
+  color: var(--danger);
+}
+
+/* Status text — the "Working..." / "Done" / "Waiting" label */
+.agent-step-status-text {
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.agent-step.active .agent-step-status-text {
+  color: var(--primary);
+}
+
+.agent-step.done .agent-step-status-text {
+  color: var(--success);
+}
+
+.agent-step.error .agent-step-status-text {
+  color: var(--danger);
+}
+
 /* ═══ Error Card ═══ */
 .error-card {
   display: flex;

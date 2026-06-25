@@ -1,5 +1,6 @@
-import { useReducer } from 'react';
+import { useReducer, useRef } from 'react';
 import { analyze } from '../api/client.js';
+import { AGENT_SEQUENCE } from '../constants/agents';
 
 const initialState = {
   // dashboard data — the full SharedState from backend
@@ -21,6 +22,7 @@ const initialState = {
 
   // agent progress — driven by agent_statuses from response
   agentStatuses: {},            // mirrors backend agent_statuses field
+  simulatedStatuses: {},        // fake progress during loading
 
   // clarification
   clarificationNeeded: false,
@@ -68,6 +70,18 @@ function reducer(state, action) {
         clarificationNeeded: false,
         clarificationCandidates: [],
         clarificationMessage: '',
+      };
+
+    case 'SIMULATED_PROGRESS':
+      return {
+        ...state,
+        simulatedStatuses: action.payload,
+      };
+
+    case 'CLEAR_SIMULATED_PROGRESS':
+      return {
+        ...state,
+        simulatedStatuses: {},
       };
 
     case 'DASHBOARD_SUCCESS':
@@ -143,6 +157,36 @@ function reducer(state, action) {
 export function useAnalysis() {
   const [state, dispatch] = useReducer(reducer, initialState);
 
+  const simulationTimers = useRef([]);
+
+  const clearSimulation = () => {
+    simulationTimers.current.forEach(id => clearTimeout(id));
+    simulationTimers.current = [];
+  };
+
+  const startSimulation = () => {
+    clearSimulation();
+
+    let elapsed = 0;
+
+    AGENT_SEQUENCE.forEach((agent, idx) => {
+      const startTime = elapsed;
+
+      const startTimer = setTimeout(() => {
+        const statuses = {};
+        AGENT_SEQUENCE.forEach((a, i) => {
+          if (i < idx)        statuses[a.key] = 'completed';
+          else if (i === idx) statuses[a.key] = 'running';
+          else                statuses[a.key] = 'idle';
+        });
+        dispatch({ type: 'SIMULATED_PROGRESS', payload: statuses });
+      }, startTime);
+
+      simulationTimers.current.push(startTimer);
+      elapsed += agent.durationMs;
+    });
+  };
+
   const submitQuery = async (query) => {
     if (!query.trim()) return;
 
@@ -152,9 +196,14 @@ export function useAnalysis() {
     // 2. start loading
     dispatch({ type: 'SUBMIT_START' });
 
+    startSimulation();
+
     try {
       // 3. call the API client
       const response = await analyze(query, state.sessionId, state.existingStateHash);
+
+      clearSimulation();
+      dispatch({ type: 'CLEAR_SIMULATED_PROGRESS' });
 
       // 4. route based on response
       if (response.status === 'error') {
@@ -182,6 +231,8 @@ export function useAnalysis() {
         return;
       }
     } catch (err) {
+      clearSimulation();
+      dispatch({ type: 'CLEAR_SIMULATED_PROGRESS' });
       dispatch({ type: 'ERROR', payload: err.message || 'An unexpected error occurred' });
     }
   };
@@ -205,6 +256,7 @@ export function useAnalysis() {
     clarificationMessage:     state.clarificationMessage,
     sessionId:                state.sessionId,
     highlightedCards:         state.highlightedCards,
+    simulatedStatuses:        state.simulatedStatuses,
 
     // actions
     submitQuery,
