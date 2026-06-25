@@ -1,11 +1,11 @@
 import React from 'react'
 import { CardProps, sizeToGridSpan } from './types'
 
-const SentimentBlock: React.FC<CardProps> = ({ label, value, status, size }) => {
+const SentimentBlock: React.FC<CardProps> = ({ label, value, status, size, highlighted }) => {
   // graceful fallback if value is not the expected object
   if (!value || typeof value !== 'object') {
     return (
-      <div className="data-block" style={{ gridColumn: sizeToGridSpan(size) }}>
+      <div className={`data-block ${highlighted ? 'card-flash' : ''}`} style={{ gridColumn: sizeToGridSpan(size) }}>
         <span className="data-block-key">{label}</span>
         <span className="data-block-value">{String(value ?? '—')}</span>
       </div>
@@ -23,7 +23,7 @@ const SentimentBlock: React.FC<CardProps> = ({ label, value, status, size }) => 
 
   return (
     <div
-      className="data-block"
+      className={`data-block ${highlighted ? 'card-flash' : ''}`}
       style={{ gridColumn: sizeToGridSpan(size) }}
     >
       <span className="data-block-key">{label}</span>

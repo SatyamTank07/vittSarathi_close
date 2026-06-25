@@ -67,6 +67,7 @@ const AnalysisReport: React.FC<AnalysisReportProps> = ({ data, highlightedCards 
         <DashboardGrid
           uiManifest={data.ui_manifest}
           dashboardData={data}
+          highlightedCards={highlightedCards}
         />
       ) : (
         // fallback — old hardcoded cards when no manifest present (dev/dummy data)

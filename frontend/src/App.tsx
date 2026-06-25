@@ -74,8 +74,6 @@ const dummyAnalysisData = {
 };
 
 function App() {
-  const [highlightedCards, setHighlightedCards] = useState<Set<string>>(new Set());
-
   const {
     dashboardData,
     chatHistory,
@@ -88,6 +86,7 @@ function App() {
     submitQuery,
     resolveClarification,
     sessionId,
+    highlightedCards,
   } = useAnalysis();
 
   return (

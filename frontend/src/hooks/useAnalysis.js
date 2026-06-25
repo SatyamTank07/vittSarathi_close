@@ -26,6 +26,8 @@ const initialState = {
   clarificationNeeded: false,
   clarificationCandidates: [],  // array of { ticker, company_name }
   clarificationMessage: '',
+
+  highlightedCards: new Set(),
 };
 
 function computeStateHash(obj) {
@@ -76,6 +78,7 @@ function reducer(state, action) {
         existingStateHash: computeStateHash(action.payload),
         lastResponseType: 'dashboard',
         agentStatuses: action.payload.agent_statuses || {},
+        highlightedCards: new Set(),
         loading: false
       };
 
@@ -92,11 +95,13 @@ function reducer(state, action) {
 
     case 'PATCH_SUCCESS': {
       const mergedData = mergeChangedPaths(state.dashboardData || {}, action.payload.state_patch.changed_paths);
+      const changedPaths = new Set(Object.keys(action.payload.state_patch.changed_paths));
       return {
         ...state,
         dashboardData: mergedData,
         sessionId: action.payload.session_id || state.sessionId,
         existingStateHash: computeStateHash(mergedData),
+        highlightedCards: changedPaths,
         chatHistory: [
           ...state.chatHistory,
           { role: 'assistant', content: action.payload.state_patch.patch_summary, type: 'patch_confirm' }
@@ -199,6 +204,7 @@ export function useAnalysis() {
     clarificationCandidates:  state.clarificationCandidates,
     clarificationMessage:     state.clarificationMessage,
     sessionId:                state.sessionId,
+    highlightedCards:         state.highlightedCards,
 
     // actions
     submitQuery,

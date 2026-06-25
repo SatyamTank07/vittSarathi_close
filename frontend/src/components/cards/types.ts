@@ -7,6 +7,7 @@ export interface CardProps {
   value: any
   status: StatusType
   size: SizeType
+  highlighted?: boolean
 }
 
 // maps status → existing CSS variable from index.css

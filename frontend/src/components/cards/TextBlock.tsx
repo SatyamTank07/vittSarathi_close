@@ -1,13 +1,13 @@
 import React, { useState } from 'react'
 import { CardProps, sizeToGridSpan } from './types'
 
-const TextBlock: React.FC<CardProps> = ({ label, value, status, size }) => {
+const TextBlock: React.FC<CardProps> = ({ label, value, status, size, highlighted }) => {
   const [expanded, setExpanded] = useState(false)
   const displayValue = value !== null && value !== undefined ? String(value) : '—'
 
   return (
     <div
-      className="data-block"
+      className={`data-block ${highlighted ? 'card-flash' : ''}`}
       style={{ gridColumn: sizeToGridSpan(size) }}
     >
       <span className="data-block-key">{label}</span>

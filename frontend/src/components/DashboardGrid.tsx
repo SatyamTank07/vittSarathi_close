@@ -28,13 +28,18 @@ function getByPath(obj: any, path: string): any {
   }, obj);
 }
 
-function renderComponent(component: UIComponent, dashboardData: any) {
+function renderComponent(component: UIComponent, dashboardData: any, highlightedCards: Set<string>) {
   const value = getByPath(dashboardData, component.data_path);
+  const highlighted = Array.from(highlightedCards).some(changedPath =>
+    changedPath === component.data_path ||
+    changedPath.startsWith(component.data_path + '.')
+  );
   const sharedProps = {
     label: component.label,
     value,
     status: component.status as any,
     size: component.size as any,
+    highlighted,
   };
 
   switch (component.component_type) {
@@ -51,9 +56,10 @@ function renderComponent(component: UIComponent, dashboardData: any) {
 interface DashboardGridProps {
   uiManifest: UIManifest | null;
   dashboardData: any;
+  highlightedCards?: Set<string>;
 }
 
-const DashboardGrid: React.FC<DashboardGridProps> = ({ uiManifest, dashboardData }) => {
+const DashboardGrid: React.FC<DashboardGridProps> = ({ uiManifest, dashboardData, highlightedCards = new Set() }) => {
   if (!uiManifest || !dashboardData) return null;
 
   const sectionIcons: Record<string, string> = {
@@ -98,10 +104,10 @@ const DashboardGrid: React.FC<DashboardGridProps> = ({ uiManifest, dashboardData
               {/* Metric cards get a nested grid layout */}
               {sectionName === 'key_ratios' ? (
                 <div className="data-block-nested">
-                  {sorted.map(c => renderComponent(c, dashboardData))}
+                  {sorted.map(c => renderComponent(c, dashboardData, highlightedCards))}
                 </div>
               ) : (
-                sorted.map(c => renderComponent(c, dashboardData))
+                sorted.map(c => renderComponent(c, dashboardData, highlightedCards))
               )}
             </div>
           </div>

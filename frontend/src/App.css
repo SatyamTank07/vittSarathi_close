@@ -973,3 +973,16 @@
 .chat-panel-input-row .chat-bar-wrapper {
   max-width: 100%;
 }
+
+/* ── Patch flash animation ── */
+
+@keyframes card-flash-keyframes {
+  0%   { box-shadow: 0 0 0 0px rgba(34, 197, 94, 0.5); }
+  30%  { box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.35); }
+  70%  { box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.15); }
+  100% { box-shadow: 0 0 0 0px rgba(34, 197, 94, 0); }
+}
+
+.card-flash {
+  animation: card-flash-keyframes 1.2s ease-out forwards;
+}

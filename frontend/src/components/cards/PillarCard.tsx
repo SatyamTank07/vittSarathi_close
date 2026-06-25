@@ -1,7 +1,7 @@
 import React from 'react'
 import { CardProps, statusToColor, sizeToGridSpan } from './types'
 
-const PillarCard: React.FC<CardProps> = ({ label, value, status, size }) => {
+const PillarCard: React.FC<CardProps> = ({ label, value, status, size, highlighted }) => {
   // value can be an InvestmentPillar object or a plain string
   const thesis = typeof value === 'object' && value !== null
     ? (value.thesis || JSON.stringify(value))
@@ -13,7 +13,7 @@ const PillarCard: React.FC<CardProps> = ({ label, value, status, size }) => {
 
   return (
     <div
-      className="data-block"
+      className={`data-block ${highlighted ? 'card-flash' : ''}`}
       style={{ gridColumn: sizeToGridSpan(size) }}
     >
       <span className="data-block-key">{label}</span>

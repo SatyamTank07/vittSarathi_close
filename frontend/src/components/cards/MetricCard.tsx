@@ -1,12 +1,12 @@
 import React from 'react'
 import { CardProps, statusToColor, sizeToGridSpan } from './types'
 
-const MetricCard: React.FC<CardProps> = ({ label, value, status, size }) => {
+const MetricCard: React.FC<CardProps> = ({ label, value, status, size, highlighted }) => {
   const displayValue = value !== null && value !== undefined ? String(value) : '—'
 
   return (
     <div
-      className="data-block-nested-item"
+      className={`data-block-nested-item ${highlighted ? 'card-flash' : ''}`}
       style={{ gridColumn: sizeToGridSpan(size) }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
