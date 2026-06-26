@@ -2,8 +2,12 @@ import { useState } from 'react';
 import './App.css';
 import Header from './components/Header';
 import AnalysisReport from './components/AnalysisReport';
-import ChatBar from './components/ChatBar';
-
+import ChatPanel from './components/ChatPanel';
+import AgentProgressStrip from './components/AgentProgressStrip';
+import UploadPanel from './components/UploadPanel';
+// @ts-ignore
+import { useAnalysis } from './hooks/useAnalysis';
+import { useHealthCheck } from './hooks/useHealthCheck';
 // ═══ Dummy Data — matches backend SharedState schema ═══
 const dummyAnalysisData = {
   ticker: "TCS.NS",
@@ -73,83 +77,37 @@ const dummyAnalysisData = {
 };
 
 function App() {
-  const [chatInput, setChatInput] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const [analysisData, setAnalysisData] = useState<any>(dummyAnalysisData);
-  const [highlightedCards, setHighlightedCards] = useState<Set<string>>(new Set());
-  const [agentStep, setAgentStep] = useState<string>('idle');
-
-  // Simulate agent analysis when user submits a query
-  const handleChatSubmit = () => {
-    const query = chatInput.trim();
-    if (!query) return;
-
-    setLoading(true);
-    setError(null);
-    setAgentStep('orchestrator');
-    setChatInput('');
-
-    // Simulate agent pipeline progress
-    setTimeout(() => setAgentStep('parallel'), 1500);
-    setTimeout(() => setAgentStep('synthesizer'), 4000);
-
-    // Simulate completion after 5.5 seconds
-    setTimeout(() => {
-      setLoading(false);
-      setAgentStep('idle');
-      setAnalysisData(dummyAnalysisData);
-
-      // Highlight all cards
-      const cardIds = new Set(['card-quant', 'card-qual', 'card-risk', 'card-synth']);
-      setHighlightedCards(cardIds);
-
-      // Remove highlights after animation completes
-      setTimeout(() => {
-        setHighlightedCards(new Set());
-      }, 3000);
-    }, 5500);
-  };
+  const { isOnline } = useHealthCheck();
+  const {
+    dashboardData,
+    chatHistory,
+    loading,
+    error,
+    agentStatuses,
+    simulatedStatuses,
+    clarificationNeeded,
+    clarificationCandidates,
+    clarificationMessage,
+    submitQuery,
+    resolveClarification,
+    sessionId,
+    highlightedCards,
+  } = useAnalysis();
 
   return (
     <div className="app-container">
-      <Header />
+      <Header isOnline={isOnline} />
 
       <main className="app-main-content">
+        <UploadPanel isOnline={isOnline} />
+
         {/* Loading State */}
         {loading && (
-          <div className="analysis-loading animate-fade-in">
-            <div className="analysis-spinner" />
-            <h2>Analyzing...</h2>
-            <p>5 AI agents are working in parallel</p>
-            <div className="agent-progress">
-              <div className={`agent-step ${agentStep === 'orchestrator' ? 'active' : agentStep !== 'idle' ? 'done' : ''}`}>
-                <span className="agent-step-icon">🎯</span>
-                <span>Orchestrator — Fetching data & classifying industry</span>
-                <div className="agent-step-dot" />
-              </div>
-              <div className={`agent-step ${agentStep === 'parallel' ? 'active' : agentStep === 'synthesizer' ? 'done' : ''}`}>
-                <span className="agent-step-icon">📊</span>
-                <span>Quantitative Agent — Crunching numbers</span>
-                <div className="agent-step-dot" />
-              </div>
-              <div className={`agent-step ${agentStep === 'parallel' ? 'active' : agentStep === 'synthesizer' ? 'done' : ''}`}>
-                <span className="agent-step-icon">💡</span>
-                <span>Qualitative Agent — Analyzing moat & strategy</span>
-                <div className="agent-step-dot" />
-              </div>
-              <div className={`agent-step ${agentStep === 'parallel' ? 'active' : agentStep === 'synthesizer' ? 'done' : ''}`}>
-                <span className="agent-step-icon">🛡️</span>
-                <span>Risk Agent — Investigating red flags</span>
-                <div className="agent-step-dot" />
-              </div>
-              <div className={`agent-step ${agentStep === 'synthesizer' ? 'active' : ''}`}>
-                <span className="agent-step-icon">📝</span>
-                <span>Synthesizer — Compiling investment thesis</span>
-                <div className="agent-step-dot" />
-              </div>
-            </div>
-          </div>
+          <AgentProgressStrip
+            simulatedStatuses={simulatedStatuses}
+            realStatuses={agentStatuses || {}}
+            loading={loading}
+          />
         )}
 
         {/* Error State */}
@@ -170,17 +128,22 @@ function App() {
         )}
 
         {/* Analysis Results */}
-        {analysisData && !loading && (
-          <AnalysisReport data={analysisData} highlightedCards={highlightedCards} />
+        {!clarificationNeeded && !loading && (dashboardData ?? dummyAnalysisData) && (
+          <AnalysisReport data={dashboardData ?? dummyAnalysisData} highlightedCards={highlightedCards} />
         )}
+
       </main>
 
-      {/* Sticky Bottom Chat Bar */}
-      <ChatBar
-        value={chatInput}
-        onChange={setChatInput}
-        onSubmit={handleChatSubmit}
+      <ChatPanel
+        chatHistory={chatHistory}
         loading={loading}
+        clarificationNeeded={clarificationNeeded}
+        clarificationCandidates={clarificationCandidates}
+        clarificationMessage={clarificationMessage}
+        onSubmit={submitQuery}
+        onResolveClarification={resolveClarification}
+        sessionId={sessionId}
+        isOnline={isOnline}
       />
     </div>
   );

@@ -1,13 +1,31 @@
 import React from 'react';
 
-const Header: React.FC = () => {
+interface HeaderProps {
+  isOnline: boolean;
+}
+
+const Header: React.FC<HeaderProps> = ({ isOnline }) => {
   return (
-    <header className="app-header">
+    <header className="app-header" style={{ justifyContent: 'space-between' }}>
       <div className="header-logo">
         <svg className="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
         </svg>
         <span className="logo-text">vittSarathi <span className="text-gradient">Analysis</span></span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div 
+          style={{ 
+            width: '8px', 
+            height: '8px', 
+            borderRadius: '50%', 
+            backgroundColor: isOnline ? '#22c55e' : '#ef4444',
+            animation: isOnline ? 'pulseStatus 2s infinite' : 'none'
+          }} 
+        />
+        <span style={{ fontSize: '12px', color: isOnline ? '#22c55e' : '#9ca3af' }}>
+          {isOnline ? 'Live' : 'Offline'}
+        </span>
       </div>
     </header>
   );
