@@ -59,7 +59,15 @@ async def run_pipeline_background(pdf_path: str, meta: DocumentMetadataOutput, d
         
     except Exception as e:
         logger.error(f"Background ingestion failed: {e}")
-        # IngestionPipeline handles its own failure state updates
+        # Fallback to update DB if it was created but not updated by pipeline
+        try:
+            doc = db.query(RAGDocument).filter(RAGDocument.file_name.contains(document_id)).first()
+            if doc and doc.ingestion_status == "processing":
+                doc.ingestion_status = "failed"
+                doc.error_message = f"Catastrophic failure: {str(e)}"[:1000]
+                db.commit()
+        except Exception as inner_e:
+            logger.error(f"Failed to update database fallback: {inner_e}")
     finally:
         db.close()
 

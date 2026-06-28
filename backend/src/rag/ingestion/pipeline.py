@@ -84,6 +84,7 @@ class IngestionPipeline:
             status="processing",
         )
         errors: list[str] = []
+        split_result = None
 
         try:
             # ─── Step 1: Split PDF & Check Dedup ────────────
@@ -104,7 +105,6 @@ class IngestionPipeline:
                 )
                 status.document_id = str(existing.id)
                 status.status = "already_exists"
-                self.splitter.cleanup(split_result)
                 return status
 
             # Create document record
@@ -368,9 +368,6 @@ class IngestionPipeline:
             doc.ingestion_status = "completed"
             self.db.commit()
 
-            # Cleanup temp files
-            self.splitter.cleanup(split_result)
-
             status.status = "completed"
             status.errors = errors
 
@@ -409,6 +406,10 @@ class IngestionPipeline:
             status.status = "failed"
             status.errors = errors
             return status
+
+        finally:
+            if split_result:
+                self.splitter.cleanup(split_result)
 
     # ─── Internal Helpers ───────────────────────────────────
 
