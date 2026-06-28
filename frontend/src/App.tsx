@@ -5,6 +5,7 @@ import AnalysisReport from './components/AnalysisReport';
 import ChatPanel from './components/ChatPanel';
 import AgentProgressStrip from './components/AgentProgressStrip';
 import UploadPanel from './components/UploadPanel';
+import DocumentLibrary from './components/DocumentLibrary';
 // @ts-ignore
 import { useAnalysis } from './hooks/useAnalysis';
 import { useHealthCheck } from './hooks/useHealthCheck';
@@ -95,10 +96,12 @@ function App() {
   } = useAnalysis();
 
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+  const [libraryRefreshTrigger, setLibraryRefreshTrigger] = useState(0);
 
   return (
     <div className="app-container">
-      <Header isOnline={isOnline} />
+      <Header isOnline={isOnline} onOpenLibrary={() => setIsLibraryOpen(true)} />
 
       <main className="app-main-content">
         {/* Loading State */}
@@ -155,10 +158,23 @@ function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
-            <UploadPanel isOnline={isOnline} />
+            <UploadPanel 
+              isOnline={isOnline} 
+              onUploadSuccess={() => {
+                setIsUploadModalOpen(false);
+                setIsLibraryOpen(true);
+                setLibraryRefreshTrigger(prev => prev + 1);
+              }}
+            />
           </div>
         </div>
       )}
+
+      <DocumentLibrary 
+        isOpen={isLibraryOpen} 
+        onClose={() => setIsLibraryOpen(false)} 
+        refreshTrigger={libraryRefreshTrigger}
+      />
     </div>
   );
 }

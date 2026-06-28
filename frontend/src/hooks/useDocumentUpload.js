@@ -66,10 +66,10 @@ export function useDocumentUpload() {
 
         setProcessingStatus(statusRes.status);
 
-        if (statusRes.status === 'COMPLETED') {
+        if (statusRes.status === 'completed') {
           cleanupInterval();
           setUploadPhase('complete');
-        } else if (statusRes.status === 'FAILED') {
+        } else if (statusRes.status === 'failed') {
           cleanupInterval();
           setUploadPhase('failed');
           setErrorMessage(statusRes.error_message || "Ingestion failed. Try uploading again.");

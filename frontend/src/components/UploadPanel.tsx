@@ -1,11 +1,12 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { useDocumentUpload } from '../hooks/useDocumentUpload';
 
 interface UploadPanelProps {
   isOnline: boolean;
+  onUploadSuccess?: () => void;
 }
 
-export default function UploadPanel({ isOnline }: UploadPanelProps) {
+export default function UploadPanel({ isOnline, onUploadSuccess }: UploadPanelProps) {
   const {
     uploadPhase,
     extractedMeta,
@@ -18,6 +19,13 @@ export default function UploadPanel({ isOnline }: UploadPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (uploadPhase === 'processing' && onUploadSuccess) {
+      onUploadSuccess();
+      setTimeout(() => reset(), 100);
+    }
+  }, [uploadPhase, onUploadSuccess, reset]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
