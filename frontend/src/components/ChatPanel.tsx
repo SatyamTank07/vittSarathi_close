@@ -13,6 +13,7 @@ interface ChatPanelProps {
   clarificationMessage: string;
   onSubmit: (query: string) => void;
   onResolveClarification: (ticker: string, companyName: string) => void;
+  onOpenUploadModal: () => void;
   sessionId: string | null;
   isOnline: boolean;
 }
@@ -25,6 +26,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   clarificationMessage,
   onSubmit,
   onResolveClarification,
+  onOpenUploadModal,
   sessionId,
   isOnline
 }) => {
@@ -125,6 +127,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             onSubmit={handleSubmit}
             loading={loading}
             disabled={!isOnline}
+            onPinClick={onOpenUploadModal}
           />
           {!isOnline && (
             <div style={{ textAlign: 'center', marginTop: '8px' }}>

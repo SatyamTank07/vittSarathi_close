@@ -94,13 +94,13 @@ function App() {
     highlightedCards,
   } = useAnalysis();
 
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+
   return (
     <div className="app-container">
       <Header isOnline={isOnline} />
 
       <main className="app-main-content">
-        <UploadPanel isOnline={isOnline} />
-
         {/* Loading State */}
         {loading && (
           <AgentProgressStrip
@@ -142,9 +142,23 @@ function App() {
         clarificationMessage={clarificationMessage}
         onSubmit={submitQuery}
         onResolveClarification={resolveClarification}
+        onOpenUploadModal={() => setIsUploadModalOpen(true)}
         sessionId={sessionId}
         isOnline={isOnline}
       />
+
+      {isUploadModalOpen && (
+        <div className="upload-modal-overlay" onClick={() => setIsUploadModalOpen(false)}>
+          <div className="upload-modal-content" onClick={e => e.stopPropagation()}>
+            <button className="upload-modal-close" onClick={() => setIsUploadModalOpen(false)}>
+              <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <UploadPanel isOnline={isOnline} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
