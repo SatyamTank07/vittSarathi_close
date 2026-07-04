@@ -98,95 +98,22 @@ class SarvamClient:
             "api-subscription-key": self.api_key,
         }
 
-    # ─── Step 1: Upload File ────────────────────────────────
+    # ─── Step 1: Create Job ─────────────────────────────────
 
-    async def upload_file(self, file_path: str) -> dict:
+    async def create_job(self) -> str:
         """
-        Get a presigned upload URL from Sarvam, then upload the file.
-
-        Args:
-            file_path: Path to the PDF batch file.
-
-        Returns:
-            Dict with upload metadata including file reference for job submission.
-        """
-        file_path_obj = Path(file_path)
-        if not file_path_obj.exists():
-            raise FileNotFoundError(f"Batch file not found: {file_path}")
-
-        file_name = file_path_obj.name
-        logger.info(f"[Sarvam] Uploading: {file_name}")
-
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            # Request presigned upload URL
-            response = await client.post(
-                f"{self.base_url}/doc-digitization/job/v1/upload-files",
-                headers=self._headers,
-                json={"file_name": file_name},
-            )
-            self._check_response(response, "upload-files")
-
-            upload_info = response.json()
-            presigned_url = upload_info.get("presigned_url") or upload_info.get("upload_url")
-
-            if not presigned_url:
-                # Some API versions return the URL differently
-                # Try alternative field names
-                for key in ("url", "signed_url", "upload_uri"):
-                    presigned_url = upload_info.get(key)
-                    if presigned_url:
-                        break
-
-            if not presigned_url:
-                raise SarvamAPIError(
-                    "Could not find presigned URL in upload response",
-                    response_body=json.dumps(upload_info),
-                )
-
-            # Upload the actual file to the presigned URL
-            with open(file_path, "rb") as f:
-                file_bytes = f.read()
-
-            upload_response = await client.put(
-                presigned_url,
-                content=file_bytes,
-                headers={"Content-Type": "application/pdf"},
-            )
-
-            if upload_response.status_code not in (200, 201, 204):
-                raise SarvamAPIError(
-                    f"File upload failed with status {upload_response.status_code}",
-                    status_code=upload_response.status_code,
-                )
-
-            logger.info(f"[Sarvam] Upload successful: {file_name}")
-            return upload_info
-
-    # ─── Step 2: Submit Job ─────────────────────────────────
-
-    async def submit_job(self, upload_info: dict) -> str:
-        """
-        Submit a digitization job using the uploaded file reference.
-
-        Args:
-            upload_info: Response dict from upload_file().
-
+        Step 1: Create a digitization job.
+        
         Returns:
             job_id string.
         """
-        # Build job submission payload
-        # The exact field names depend on the API version
         job_payload = {
-            "output_format": self.output_format,
-            "language": self.language,
+            "job_parameters": {
+                "language": self.language,
+                "output_format": self.output_format,
+            }
         }
-
-        # Pass through file reference fields from upload response
-        for key in ("file_id", "file_key", "file_name", "request_id"):
-            if key in upload_info:
-                job_payload[key] = upload_info[key]
-
-        logger.info(f"[Sarvam] Submitting job (format={self.output_format})")
+        logger.info(f"[Sarvam] Creating job (format={self.output_format})")
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
@@ -194,55 +121,137 @@ class SarvamClient:
                 headers=self._headers,
                 json=job_payload,
             )
-
-            # Handle page limit error specifically
-            if response.status_code == 422:
-                body = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
-                error_code = body.get("code", "")
-                if "max_page_limit" in error_code or "page" in str(body).lower():
-                    raise SarvamPageLimitError(
-                        f"File exceeds the 10-page limit: {body}",
-                        status_code=422,
-                    )
-
-            self._check_response(response, "submit-job")
+            self._check_response(response, "create-job")
 
             result = response.json()
             job_id = result.get("job_id") or result.get("id") or result.get("request_id")
 
             if not job_id:
                 raise SarvamAPIError(
-                    "Could not find job_id in submission response",
+                    "Could not find job_id in create-job response",
                     response_body=json.dumps(result),
                 )
 
-            logger.info(f"[Sarvam] Job submitted: {job_id}")
+            logger.info(f"[Sarvam] Job created: {job_id}")
             return job_id
 
-    # ─── Step 3: Poll Status ────────────────────────────────
+    # ─── Step 2 & 3: Get Upload URL & Upload PDF ────────────
+
+    async def upload_file(self, job_id: str, file_path: str) -> bool:
+        """
+        Step 2: Get a presigned upload URL from Sarvam.
+        Step 3: Upload the file to that URL.
+
+        Args:
+            job_id: The job ID from create_job().
+            file_path: Path to the PDF batch file.
+
+        Returns:
+            True if upload succeeds.
+        """
+        file_path_obj = Path(file_path)
+        if not file_path_obj.exists():
+            raise FileNotFoundError(f"Batch file not found: {file_path}")
+
+        file_name = file_path_obj.name
+        logger.info(f"[Sarvam] Uploading {file_name} for job {job_id}")
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            # Step 2: Get presigned upload URL
+            response = await client.post(
+                f"{self.base_url}/doc-digitization/job/v1/upload-files",
+                headers=self._headers,
+                json={"job_id": job_id, "files": [file_name]},
+            )
+            self._check_response(response, "upload-files")
+
+            upload_info = response.json()
+            upload_urls = upload_info.get("upload_urls", {})
+            url_entry = upload_urls.get(file_name) or (
+                list(upload_urls.values())[0] if upload_urls else None
+            )
+            
+            presigned_url = None
+            if isinstance(url_entry, str):
+                presigned_url = url_entry
+            elif isinstance(url_entry, dict):
+                presigned_url = url_entry.get("url") or url_entry.get("file_url")
+                if not presigned_url:
+                    for v in url_entry.values():
+                        if isinstance(v, str) and v.startswith("http"):
+                            presigned_url = v
+                            break
+
+            if not presigned_url:
+                raise SarvamAPIError(
+                    "Could not find presigned URL in upload_urls response",
+                    response_body=json.dumps(upload_info),
+                )
+
+            # Step 3: PUT actual file
+            with open(file_path, "rb") as f:
+                file_bytes = f.read()
+
+            upload_response = await client.put(
+                presigned_url,
+                content=file_bytes,
+                headers={
+                    "Content-Type": "application/pdf",
+                    "x-ms-blob-type": "BlockBlob"
+                },
+            )
+
+            if upload_response.status_code not in (200, 201, 204):
+                raise SarvamAPIError(
+                    f"File upload failed with status {upload_response.status_code}",
+                    status_code=upload_response.status_code,
+                    response_body=upload_response.text[:500]
+                )
+
+            logger.info(f"[Sarvam] Upload successful for {file_name}")
+            return True
+
+    # ─── Step 4: Start Job ──────────────────────────────────
+
+    async def start_job(self, job_id: str) -> bool:
+        """
+        Step 4: Start processing the uploaded job.
+        """
+        logger.info(f"[Sarvam] Starting job {job_id}")
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{self.base_url}/doc-digitization/job/v1/{job_id}/start",
+                headers=self._headers,
+                json={},
+            )
+            
+            # Handle specific error codes if needed
+            if response.status_code == 400:
+                body = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
+                error_code = body.get("code", "")
+                if "max_page_limit" in error_code or "page" in str(body).lower():
+                    raise SarvamPageLimitError(
+                        f"File exceeds the 10-page limit: {body}",
+                        status_code=400,
+                    )
+                    
+            self._check_response(response, "start-job")
+            return True
+
+    # ─── Step 5: Poll Status ────────────────────────────────
 
     async def poll_job(self, job_id: str) -> dict:
         """
-        Poll job status until completion or timeout.
-
-        Args:
-            job_id: The job ID from submit_job().
-
-        Returns:
-            Final job status dict with page_metrics.
-
-        Raises:
-            SarvamTimeoutError: If polling exceeds timeout.
-            SarvamAPIError: If job fails.
+        Step 5: Poll job status until completion or timeout.
         """
         logger.info(f"[Sarvam] Polling job {job_id} (timeout={self.poll_timeout}s)")
-
         elapsed = 0
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             while elapsed < self.poll_timeout:
                 response = await client.get(
-                    f"{self.base_url}/doc-digitization/job/v1/{job_id}",
+                    f"{self.base_url}/doc-digitization/job/v1/{job_id}/status",
                     headers=self._headers,
                 )
                 self._check_response(response, "poll-job")
@@ -264,7 +273,7 @@ class SarvamClient:
                     f"({pages_done}/{pages_total} pages, {elapsed}s elapsed)"
                 )
 
-                if job_state in ("completed", "complete", "done", "succeeded"):
+                if job_state in ("completed", "complete", "done", "succeeded", "partiallycompleted"):
                     return status
 
                 if job_state in ("failed", "error", "cancelled"):
@@ -281,45 +290,34 @@ class SarvamClient:
             f"Job {job_id} did not complete within {self.poll_timeout}s"
         )
 
-    # ─── Step 4: Download Results ───────────────────────────
+    # ─── Step 6 & 7: Download Results ───────────────────────
 
     async def download_results(self, job_id: str) -> dict[int, dict[str, Any]]:
         """
-        Download and extract the results ZIP for a completed job.
-
-        Args:
-            job_id: The completed job ID.
-
-        Returns:
-            Dict keyed by page number (1-indexed), each value containing:
-                - "json": parsed JSON data for that page (dict)
-                - "html": HTML string (if output_format was "html")
-                - "markdown": Markdown string (if output_format was "md")
-                - "raw_files": list of filenames in the ZIP for this page
+        Step 6 & 7: Download and extract the results ZIP for a completed job.
         """
         logger.info(f"[Sarvam] Downloading results for job {job_id}")
 
         async with httpx.AsyncClient(timeout=120.0) as client:
-            # Get download URLs
+            # Step 6: Get download URLs
             response = await client.post(
-                f"{self.base_url}/doc-digitization/job/v1/download-urls",
+                f"{self.base_url}/doc-digitization/job/v1/{job_id}/download-files",
                 headers=self._headers,
-                json={"job_id": job_id},
+                json={},
             )
-            self._check_response(response, "download-urls")
+            self._check_response(response, "download-files")
 
             download_info = response.json()
-
-            # Extract download URL(s)
-            download_url = (
-                download_info.get("download_url")
-                or download_info.get("url")
-                or download_info.get("signed_url")
-            )
-
-            # Some versions return a list of URLs
-            if not download_url and isinstance(download_info.get("urls"), list):
-                download_url = download_info["urls"][0] if download_info["urls"] else None
+            download_urls = download_info.get("download_urls", {})
+            
+            download_url = None
+            for fname, entry in download_urls.items():
+                if isinstance(entry, dict):
+                    download_url = entry.get("file_url") or entry.get("url")
+                elif isinstance(entry, str) and entry.startswith("http"):
+                    download_url = entry
+                if download_url:
+                    break
 
             if not download_url:
                 raise SarvamAPIError(
@@ -327,7 +325,7 @@ class SarvamClient:
                     response_body=json.dumps(download_info),
                 )
 
-            # Download the ZIP archive
+            # Step 7: Download the ZIP archive
             zip_response = await client.get(download_url)
             if zip_response.status_code != 200:
                 raise SarvamAPIError(
@@ -342,16 +340,11 @@ class SarvamClient:
 
     async def process_pdf_batch(self, file_path: str) -> dict[int, dict[str, Any]]:
         """
-        Full pipeline: upload → submit → poll → download in one call.
-
-        Args:
-            file_path: Path to a PDF batch (≤10 pages).
-
-        Returns:
-            Per-page parsed results dict.
+        Full pipeline: create → upload → start → poll → download.
         """
-        upload_info = await self.upload_file(file_path)
-        job_id = await self.submit_job(upload_info)
+        job_id = await self.create_job()
+        await self.upload_file(job_id, file_path)
+        await self.start_job(job_id)
         await self.poll_job(job_id)
         results = await self.download_results(job_id)
         return results

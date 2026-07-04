@@ -9,6 +9,7 @@ This is the single entry point for ingesting a financial report PDF
 into the RAG system.
 """
 
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -18,6 +19,7 @@ from sqlalchemy.orm import Session
 from src.rag.config import (
     NARRATIVE_SECTION_TYPES,
     STRUCTURED_SECTION_TYPES,
+    RAW_OUTPUT_DIR,
 )
 from src.rag.models.schemas import (
     ChunkWithContext,
@@ -160,6 +162,15 @@ class IngestionPipeline:
                 f"{status.pages_processed}/{status.total_pages} pages processed"
             )
 
+            # Dump raw Sarvam output for debugging
+            raw_output_file = RAW_OUTPUT_DIR / f"{doc.id}_raw.json"
+            try:
+                with open(raw_output_file, "w", encoding="utf-8") as f:
+                    json.dump(all_pages_data, f, ensure_ascii=False, indent=2)
+                logger.info(f"[Pipeline] Saved raw Sarvam output to {raw_output_file}")
+            except Exception as e:
+                logger.warning(f"[Pipeline] Failed to save raw Sarvam output: {e}")
+
             # ─── Step 3: Normalize JSON ────────────────────
             logger.info("[Pipeline] Step 3: Normalizing JSON output")
             normalized_pages = self.normalizer.normalize_document(all_pages_data)
@@ -172,6 +183,16 @@ class IngestionPipeline:
             )
             status.sections_found = len(classified_sections)
             logger.info(f"[Pipeline] Classified {len(classified_sections)} sections")
+
+            # Dump classified sections for debugging
+            classified_output_file = RAW_OUTPUT_DIR / f"{doc.id}_classified.json"
+            try:
+                classified_dump = [s.model_dump() for s in classified_sections]
+                with open(classified_output_file, "w", encoding="utf-8") as f:
+                    json.dump(classified_dump, f, ensure_ascii=False, indent=2)
+                logger.info(f"[Pipeline] Saved classified sections to {classified_output_file}")
+            except Exception as e:
+                logger.warning(f"[Pipeline] Failed to save classified sections: {e}")
 
             # ─── Step 5: Store Sections & Tables ───────────
             logger.info("[Pipeline] Step 5: Storing sections and tables")
@@ -186,6 +207,7 @@ class IngestionPipeline:
 
             section_id_map: dict[int, str] = {}  # section_index → UUID
             table_count = 0
+            generated_summaries = []
 
             for idx, section in enumerate(classified_sections):
                 # Generate contextual summary
@@ -193,6 +215,12 @@ class IngestionPipeline:
                     section, doc_metadata
                 )
                 section.contextual_summary = summary
+
+                generated_summaries.append({
+                    "section_type": section.section_type,
+                    "section_path": section.section_path,
+                    "summary": summary
+                })
 
                 # Create section record
                 db_section = RAGSection(
@@ -234,6 +262,15 @@ class IngestionPipeline:
                 f"[Pipeline] Stored {len(section_id_map)} sections, "
                 f"{table_count} tables"
             )
+
+            # Dump summaries for debugging
+            summaries_output_file = RAW_OUTPUT_DIR / f"{doc.id}_summaries.json"
+            try:
+                with open(summaries_output_file, "w", encoding="utf-8") as f:
+                    json.dump(generated_summaries, f, ensure_ascii=False, indent=2)
+                logger.info(f"[Pipeline] Saved summaries to {summaries_output_file}")
+            except Exception as e:
+                logger.warning(f"[Pipeline] Failed to save summaries: {e}")
 
             # ─── Step 6: Extract & Resolve References ──────
             logger.info("[Pipeline] Step 6: Extracting and resolving references")
@@ -409,7 +446,8 @@ class IngestionPipeline:
 
         finally:
             if split_result:
-                self.splitter.cleanup(split_result)
+                # self.splitter.cleanup(split_result)
+                logger.info(f"[Pipeline] Keeping split batches at: {split_result.temp_dir}")
 
     # ─── Internal Helpers ───────────────────────────────────
 
