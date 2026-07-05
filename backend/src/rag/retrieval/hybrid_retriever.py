@@ -58,40 +58,51 @@ class HybridRetriever:
         logger.info(f"Retrieving context for query: '{request.query}'")
         
         # 1. Route the query to determine strategy
-        decision = await self.router.route_query(request)
+        decision = await self.router.route_query(request, db_session=self.db_session)
         
-        # ── Log classification decision (fire-and-forget) ────────────
+        # ── Log classification decision ────────────
         if self.db_session is not None:
-            import asyncio
-            from functools import partial
-            
-            loop = asyncio.get_running_loop()
-            loop.run_in_executor(
-                None,
-                partial(
-                    log_routing_decision,
-                    db_session=self.db_session,
-                    query=request.query,
-                    decision=decision,
-                    fallback_reason=decision.explanation if decision.fallback_applied else None,
-                )
+            log_routing_decision(
+                db_session=self.db_session,
+                query=request.query,
+                decision=decision,
+                fallback_reason=decision.explanation if decision.fallback_applied else None,
             )
 
         chunks: list[ScoredChunk] = []
         
         # 2. Execute retrieval strategy
+        from src.rag.config import STRUCTURED_SECTION_TYPES
+        
+        # Check if the requested sections are primarily structured (PageIndex)
+        filters = decision.metadata_filters
+        is_structured_request = False
+        if filters.section_types:
+            is_structured_request = any(s in STRUCTURED_SECTION_TYPES for s in filters.section_types)
+            
         if decision.tier == QueryTier.T1_FACT_LOOKUP:
             chunks = await self._execute_tree_navigation(request, decision)
             
         elif decision.tier == QueryTier.T2_MULTI_SECTION:
-            chunks = await self._execute_hybrid_search(request, decision)
+            # T2 is usually hybrid, but if they asked for structured data, navigate the tree
+            if is_structured_request:
+                chunks = await self._execute_tree_navigation(request, decision)
+            else:
+                chunks = await self._execute_hybrid_search(request, decision)
             
         elif decision.tier == QueryTier.T3_CROSS_REFERENCE:
-            chunks = await self._execute_hybrid_search(request, decision)
-            # Ref resolution happens in context_assembler
+            # T3 usually involves footnotes (structured data)
+            if is_structured_request or not filters.section_types:
+                chunks = await self._execute_tree_navigation(request, decision)
+            else:
+                chunks = await self._execute_hybrid_search(request, decision)
             
         elif decision.tier == QueryTier.T4_TEMPORAL_SYNTHESIS:
-            chunks = await self._execute_hybrid_search(request, decision)
+            # T4 could be comparing profits (structured) or MDA (narrative)
+            if is_structured_request:
+                chunks = await self._execute_tree_navigation(request, decision)
+            else:
+                chunks = await self._execute_hybrid_search(request, decision)
             
         else:
             # Fallback
@@ -136,23 +147,24 @@ class HybridRetriever:
     ) -> list[ScoredChunk]:
         """
         Execute tree navigation for structured data lookups.
-        Since T1 queries are often looking for specific numbers in tables,
+        Since T1/T3/T4 queries often look for specific numbers in tables,
         we fetch the relevant PageIndex nodes and format them as chunks.
         """
-        # If no specific document is requested, we can't reliably navigate the tree.
-        # Fall back to hybrid search.
         filters = decision.metadata_filters
         
-        if not filters.company_id or not filters.fiscal_year:
-            logger.warning("Tree navigation requires company and year. Falling back to hybrid.")
+        # We need a company, and at least one year
+        has_year = filters.fiscal_year is not None or bool(filters.fiscal_years)
+        if not filters.company_id or not has_year:
+            logger.warning("Tree navigation requires company and year(s). Falling back to hybrid.")
             return await self._execute_hybrid_search(request, decision)
             
-        # First, find the document ID matching the filters
+        # First, find the document IDs matching the filters
         from src.rag.storage.document_store import DocumentStore
         doc_store = DocumentStore(self.vector_store.db)
         docs = doc_store.find_documents(
             company_id=filters.company_id,
             fiscal_year=filters.fiscal_year,
+            fiscal_years=filters.fiscal_years,
             fiscal_quarter=filters.fiscal_quarter
         )
         
@@ -160,42 +172,45 @@ class HybridRetriever:
             logger.warning("No document found for tree navigation.")
             return []
             
-        doc_id = docs[0].id
-        
-        # If section types are specified, fetch those nodes
-        if filters.section_types:
-            nodes = self.pageindex_store.find_nodes_by_type(doc_id, filters.section_types)
-        else:
-            # Otherwise, just fall back to hybrid search for general fact lookups
-            return await self._execute_hybrid_search(request, decision)
-            
-        # Convert tree nodes into ScoredChunks for the reranker
+        # For each document, find the requested section nodes
         chunks = []
-        for i, node in enumerate(nodes):
-            if not node.tree_json:
-                continue
+        for doc in docs:
+            if filters.section_types:
+                nodes = self.pageindex_store.find_nodes_by_type(doc.id, filters.section_types)
+            else:
+                # If no specific section types, we can't pull the whole tree (too big).
+                # Fall back to hybrid search for this query overall.
+                return await self._execute_hybrid_search(request, decision)
                 
-            # Create a synthetic chunk text representing this structured node
-            chunk_text = f"Structured Section: {node.node_title}\n"
-            chunk_text += f"Summary: {node.tree_json.get('contextual_summary', '')}"
-            
-            metadata = ChunkMetadata(
-                company_id=filters.company_id or "",
-                report_type="annual", # Default, should extract from doc
-                fiscal_year=filters.fiscal_year or 0,
-                section_type=node.tree_json.get('section_type', 'unknown'),
-                section_path=node.node_path,
-                content_type="table",
-                document_id=str(doc_id),
-                section_id=str(node.section_id) if node.section_id else ""
-            )
-            
-            chunks.append(ScoredChunk(
-                chunk_id=str(node.id),
-                chunk_text=chunk_text,
-                metadata=metadata,
-                score=1.0 - (i * 0.01), # Artificial descending score
-                score_source="tree_navigation"
-            ))
-            
+            # Convert tree nodes into ScoredChunks for the reranker
+            for i, node in enumerate(nodes):
+                if not node.tree_json:
+                    continue
+                    
+                # Create a synthetic chunk text representing this structured node
+                chunk_text = f"Structured Section: {node.node_title}\n"
+                chunk_text += f"Summary: {node.tree_json.get('contextual_summary', '')}\n"
+                
+                # We stringify the table for the LLM
+                chunk_text += f"Data: {node.tree_json.get('data', {})}\n"
+                
+                # We package this as a ScoredChunk with perfect score (1.0)
+                # because we know structurally this is EXACTLY what they asked for.
+                meta = ChunkMetadata(
+                    company_id=doc.company_id,
+                    fiscal_year=doc.fiscal_year,
+                    fiscal_quarter=doc.fiscal_quarter,
+                    report_type=doc.report_type,
+                    section_type=node.tree_json.get("section_type", "unknown"),
+                    document_id=str(doc.id)
+                )
+                
+                chunks.append(ScoredChunk(
+                    chunk_id=str(node.id),
+                    chunk_text=chunk_text,
+                    metadata=meta,
+                    score=1.0,
+                    score_source="tree"
+                ))
+                
         return chunks

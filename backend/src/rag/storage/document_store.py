@@ -41,6 +41,7 @@ class DocumentStore:
         company_id: str | None = None,
         fiscal_year: int | None = None,
         fiscal_years: list[int] | None = None,
+        fiscal_quarter: str | None = None,
         report_type: str | None = None,
         status: str | None = "completed",
     ) -> Sequence[RAGDocument]:
@@ -54,11 +55,15 @@ class DocumentStore:
             filters.append(RAGDocument.ingestion_status == status)
         
         if company_id:
-            # Case-insensitive match
-            filters.append(RAGDocument.company_id.ilike(company_id))
+            # Normalize spaces to underscores for robust matching
+            normalized_company = company_id.replace(" ", "_")
+            filters.append(RAGDocument.company_id.ilike(normalized_company))
             
         if report_type:
             filters.append(RAGDocument.report_type == report_type)
+            
+        if fiscal_quarter:
+            filters.append(RAGDocument.fiscal_quarter == fiscal_quarter)
 
         if fiscal_year is not None:
             filters.append(RAGDocument.fiscal_year == fiscal_year)

@@ -40,8 +40,9 @@ class VectorStore:
         params: dict[str, Any] = {}
 
         if filters.company_id:
+            normalized_company = filters.company_id.replace(" ", "_")
             conditions.append("metadata->>'company_id' ILIKE :company_id")
-            params["company_id"] = filters.company_id
+            params["company_id"] = normalized_company
 
         if filters.report_type:
             conditions.append("metadata->>'report_type' = :report_type")

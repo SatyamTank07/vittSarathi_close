@@ -29,7 +29,7 @@ Also extract any metadata filters you can identify from the query:
 - company_id: Stock ticker or company name (e.g., "RIL", "TCS", "INFY", "Reliance")
 - fiscal_year: A specific fiscal year (e.g., 2024, 2023)
 - fiscal_years: Multiple years for T4 queries (e.g., [2022, 2023, 2024])
-- section_types: Which section types are relevant (use the taxonomy: balance_sheet, profit_loss, cash_flow, schedule, note_to_accounts, directors_report, mda, auditors_report, management_profile, vision_mission, risk_factors, shareholders_info, corporate_governance, standalone_financials, consolidated_financials)
+- section_types: Which section types are relevant (use ONLY these exactly as written: {{ available_sections }})
 
 Query: {{ query }}
 

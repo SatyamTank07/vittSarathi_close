@@ -77,18 +77,32 @@ class QueryRouter:
             api_key=api_key,
         )
 
-    async def route_query(self, request: QueryRequest) -> RoutingDecision:
+    async def route_query(self, request: QueryRequest, db_session=None) -> RoutingDecision:
         """
-        Determine the optimal retrieval strategy for a query.
+        Determine the optimal retrieval strategy for a query using two-pass routing.
 
         Args:
             request: The user query, optionally with some pre-filled filters.
+            db_session: Optional DB session for dynamic section discovery.
 
         Returns:
             RoutingDecision containing the tier and merged metadata filters.
         """
-        # Call LLM to classify query
-        prompt_text = _PROMPT_TEMPLATE.render(query=request.query)
+        # --- PASS 1: Extract Entities ---
+        entities = await self._pass1_extract_entities(request.query)
+        
+        # Merge request filters with pass 1 filters for DB lookup
+        comp_id = request.company_id or entities.get("company_id")
+        yr = request.fiscal_year or entities.get("fiscal_year")
+        yrs = entities.get("fiscal_years")
+        
+        # --- DB LOOKUP: Get Available Sections ---
+        available_sections = self._get_available_sections(comp_id, yr, yrs, db_session)
+        sections_str = ", ".join(available_sections)
+        logger.info(f"Pass 1 extracted: {comp_id} | {yr}. Available sections: {sections_str}")
+
+        # --- PASS 2: Full Routing with Dynamic Taxonomy ---
+        prompt_text = _PROMPT_TEMPLATE.render(query=request.query, available_sections=sections_str)
 
         fallback_applied = False
         fallback_reason = None
@@ -153,6 +167,73 @@ class QueryRouter:
         )
 
     # ─── Internal Methods ───────────────────────────────────
+
+    async def _pass1_extract_entities(self, query: str) -> dict:
+        """Fast pass to extract only company_id and fiscal_year(s)."""
+        prompt = f"""Extract the company name and fiscal year(s) from the query.
+Respond ONLY with valid JSON:
+{{
+  "company_id": "Company name or ticker",
+  "fiscal_year": 2024,
+  "fiscal_years": [2023, 2024]
+}}
+If not found, use null.
+Query: {query}"""
+        try:
+            response = await self.llm.ainvoke(prompt)
+            text = response.content.strip()
+            if text.startswith("```"):
+                lines = text.split("\n")
+                lines = [l for l in lines if not l.strip().startswith("```")]
+                text = "\n".join(lines).strip()
+            import re
+            match = re.search(r"\{[^{}]*\}", text, re.DOTALL)
+            if match:
+                return json.loads(match.group())
+            return {"company_id": None, "fiscal_year": None, "fiscal_years": None}
+        except Exception as e:
+            logger.warning(f"Pass 1 extraction failed: {e}")
+            return {"company_id": None, "fiscal_year": None, "fiscal_years": None}
+
+    def _get_available_sections(self, company_id, year, years, db_session) -> list[str]:
+        """Query the DB for unique section types for this company/year."""
+        if not db_session or not company_id:
+            return SECTION_TYPES
+            
+        from src.rag.storage.document_store import DocumentStore
+        from src.rag.models.database import RAGPageIndexNode, RAGSectionChunk
+        
+        doc_store = DocumentStore(db_session)
+        docs = doc_store.find_documents(
+            company_id=company_id,
+            fiscal_year=year,
+            fiscal_years=years
+        )
+        
+        if not docs:
+            return SECTION_TYPES
+            
+        doc_ids = [doc.id for doc in docs]
+        sections = set()
+        
+        # Get from PageIndex
+        page_nodes = db_session.query(RAGPageIndexNode).filter(RAGPageIndexNode.document_id.in_(doc_ids)).all()
+        for n in page_nodes:
+            if n.tree_json and 'section_type' in n.tree_json:
+                sections.add(n.tree_json['section_type'])
+                
+        # Get from VectorChunks
+        from sqlalchemy import text
+        for doc_id in doc_ids:
+            res = db_session.execute(text("SELECT DISTINCT metadata->>'section_type' FROM rag_section_chunks WHERE metadata->>'document_id' = :did"), {"did": str(doc_id)})
+            for row in res:
+                if row[0]:
+                    sections.add(row[0])
+                    
+        if not sections:
+            return SECTION_TYPES
+            
+        return list(sections)
 
     def _parse_response(self, raw_text: str) -> QueryRouterResponse:
         """Parse LLM response into structured output."""
