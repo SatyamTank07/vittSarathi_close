@@ -7,6 +7,7 @@ from src.rag.storage.pageindex import PageIndexStore
 from src.rag.storage.ref_store import RefStore
 from src.rag.storage.document_store import DocumentStore
 from src.rag.retrieval.context_assembler import ContextAssembler
+from src.tools.ticker_mapper import normalize_company_id
 
 @tool
 async def search_narrative_disclosures(query: str, company_id: str, fiscal_year: int = None) -> str:
@@ -16,6 +17,7 @@ async def search_narrative_disclosures(query: str, company_id: str, fiscal_year:
     'vision_mission', and 'management_profile'.
     Use this for conceptual questions like strategy, market outlook, and management commentary.
     """
+    db_company_id = normalize_company_id(company_id)
     with SessionLocal() as db:
         vector_store = VectorStore(db)
         page_index = PageIndexStore(db)
@@ -26,7 +28,7 @@ async def search_narrative_disclosures(query: str, company_id: str, fiscal_year:
         
         request = QueryRequest(query=query)
         filters = MetadataFilter(
-            company_id=company_id, 
+            company_id=db_company_id, 
             fiscal_year=fiscal_year, 
             section_types=narrative_sections
         )

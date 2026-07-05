@@ -8,6 +8,7 @@ from src.rag.storage.pageindex import PageIndexStore
 from src.rag.storage.ref_store import RefStore
 from src.rag.storage.document_store import DocumentStore
 from src.rag.retrieval.context_assembler import ContextAssembler
+from src.tools.ticker_mapper import normalize_company_id
 
 @tool
 async def historical_trend_search(query: str, company_id: str, fiscal_years: List[int]) -> str:
@@ -16,6 +17,7 @@ async def historical_trend_search(query: str, company_id: str, fiscal_years: Lis
     Use this for temporal synthesis and Year-over-Year (YoY) comparisons to see how 
     a metric, strategy, or risk has changed over time.
     """
+    db_company_id = normalize_company_id(company_id)
     with SessionLocal() as db:
         vector_store = VectorStore(db)
         page_index = PageIndexStore(db)
@@ -24,7 +26,7 @@ async def historical_trend_search(query: str, company_id: str, fiscal_years: Lis
         
         request = QueryRequest(query=query)
         filters = MetadataFilter(
-            company_id=company_id, 
+            company_id=db_company_id, 
             fiscal_years=fiscal_years
         )
         decision = RoutingDecision(
