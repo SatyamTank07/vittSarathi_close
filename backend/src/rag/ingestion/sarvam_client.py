@@ -398,18 +398,23 @@ class SarvamClient:
                 if lower_fname.endswith(".json"):
                     try:
                         parsed = json.loads(content)
-                        json_data = self._flatten_json_pages(parsed)
+                        # Derive a page number from the filename as a fallback
+                        fallback_page = self._extract_page_num(fname, default=None)
+                        flattened = self._flatten_json_pages(parsed, fallback_page=fallback_page)
+                        json_data.update(flattened)   # merge, don't overwrite
                     except json.JSONDecodeError as e:
                         logger.warning(f"[Sarvam] Failed to parse JSON {fname}: {e}")
 
                 elif lower_fname.endswith(".html") or lower_fname.endswith(".htm"):
                     # Try to detect page number from filename
                     page_num = self._extract_page_num(fname, default=1)
-                    html_content[page_num] = content
+                    if page_num:
+                        html_content[page_num] = content
 
                 elif lower_fname.endswith(".md") or lower_fname.endswith(".markdown"):
                     page_num = self._extract_page_num(fname, default=1)
-                    markdown_content[page_num] = content
+                    if page_num:
+                        markdown_content[page_num] = content
 
             # Merge all content types into per-page results
             all_pages = set(json_data.keys()) | set(html_content.keys()) | set(markdown_content.keys())
@@ -428,7 +433,7 @@ class SarvamClient:
         logger.info(f"[Sarvam] Parsed {len(results)} pages from ZIP")
         return results
 
-    def _flatten_json_pages(self, parsed: Any) -> dict[int, dict]:
+    def _flatten_json_pages(self, parsed: Any, fallback_page: int | None = None) -> dict[int, dict]:
         """
         Extract per-page JSON data from the Sarvam JSON output.
         Handles multiple possible structures since the JSON schema
@@ -445,11 +450,11 @@ class SarvamClient:
         elif isinstance(parsed, dict):
             # Format: {pages: [...]} or {1: {...}, 2: {...}} or flat single page
             if "pages" in parsed:
-                return self._flatten_json_pages(parsed["pages"])
+                return self._flatten_json_pages(parsed["pages"], fallback_page=fallback_page)
             elif "results" in parsed:
-                return self._flatten_json_pages(parsed["results"])
+                return self._flatten_json_pages(parsed["results"], fallback_page=fallback_page)
             elif "data" in parsed and isinstance(parsed["data"], (list, dict)):
-                return self._flatten_json_pages(parsed["data"])
+                return self._flatten_json_pages(parsed["data"], fallback_page=fallback_page)
             else:
                 # Check if keys are page numbers
                 numeric_keys = [k for k in parsed.keys() if str(k).isdigit()]
@@ -457,12 +462,14 @@ class SarvamClient:
                     for k in numeric_keys:
                         pages[int(k)] = parsed[k]
                 else:
-                    # Single page — treat entire dict as page 1
-                    pages[1] = parsed
+                    # Single page blob — use the filename's page number if we have
+                    # one, instead of blindly assuming page 1.
+                    page_key = fallback_page if fallback_page is not None else 1
+                    pages[page_key] = parsed
 
         return pages
 
-    def _extract_page_num(self, filename: str, default: int = 1) -> int:
+    def _extract_page_num(self, filename: str, default: int | None = 1) -> int | None:
         """Try to extract a page number from a filename like 'page_3.html'."""
         import re
         match = re.search(r"(?:page|p)[\s_-]*(\d+)", filename, re.IGNORECASE)

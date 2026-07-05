@@ -63,6 +63,9 @@ class SectionClassifier:
             max_tokens=CLASSIFIER_MAX_TOKENS,
             api_key=api_key,
         )
+        
+        # Store raw prompts and responses for debugging
+        self.llm_debug_logs = []
 
     async def classify_document(
         self, pages: list[NormalizedPage]
@@ -132,6 +135,15 @@ class SectionClassifier:
         # Call LLM
         try:
             response = await self.llm.ainvoke(prompt_text)
+            
+            # Store debug info
+            self.llm_debug_logs.append({
+                "page_start": page_start,
+                "page_end": page_end,
+                "prompt": prompt_text,
+                "raw_response": response.content
+            })
+            
             result = self._parse_response(response.content)
         except Exception as e:
             logger.warning(
