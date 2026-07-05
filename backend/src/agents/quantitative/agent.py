@@ -79,10 +79,12 @@ class QuantitativeAgent(BaseAgent):
 
         metrics_str = "\n".join(f"  {k}: {v}" for k, v in metrics.items() if v is not None)
 
-        # ── NEW: append screener data if available ──
+        # ── Append screener data if available ──
         screener_block = ""
         screener_ratios = data.get("screener_ratios", {})
         screener_financials = data.get("screener_financials", {})
+        screener_quarters = data.get("screener_quarters")
+        screener_ratios_history = data.get("screener_ratios_history")
         screener_source = data.get("screener_data_source", "not_attempted")
 
         if screener_ratios:
@@ -93,12 +95,30 @@ class QuantitativeAgent(BaseAgent):
             for table_name, table_data in screener_financials.items():
                 if table_data is not None:
                     screener_block += f"\nSCREENER.IN {table_name.upper().replace('_', ' ')}:\n"
-                    years = table_data.get("years", [])
+                    periods = table_data.get("periods", table_data.get("years", []))
                     rows = table_data.get("rows", {})
-                    if years:
-                        screener_block += f"  Years: {', '.join(years)}\n"
+                    if periods:
+                        screener_block += f"  Periods: {', '.join(str(p) for p in periods)}\n"
                     for row_label, row_values in rows.items():
                         screener_block += f"  {row_label}: {', '.join(str(v) for v in row_values)}\n"
+
+        if screener_quarters and isinstance(screener_quarters, dict):
+            screener_block += "\nSCREENER.IN QUARTERLY RESULTS:\n"
+            q_periods = screener_quarters.get("periods", [])
+            q_rows = screener_quarters.get("rows", {})
+            if q_periods:
+                screener_block += f"  Quarters: {', '.join(str(p) for p in q_periods)}\n"
+            for row_label, row_values in q_rows.items():
+                screener_block += f"  {row_label}: {', '.join(str(v) for v in row_values)}\n"
+
+        if screener_ratios_history and isinstance(screener_ratios_history, dict):
+            screener_block += "\nSCREENER.IN RATIO TRENDS:\n"
+            rh_periods = screener_ratios_history.get("periods", [])
+            rh_rows = screener_ratios_history.get("rows", {})
+            if rh_periods:
+                screener_block += f"  Periods: {', '.join(str(p) for p in rh_periods)}\n"
+            for row_label, row_values in rh_rows.items():
+                screener_block += f"  {row_label}: {', '.join(str(v) for v in row_values)}\n"
 
         if screener_source == "failed":
             screener_block = "\nSCREENER.IN DATA: unavailable — use yfinance data above only.\n"
@@ -124,9 +144,11 @@ Produce your quantitative analysis as a JSON object."""
         try:
             screener_result = await scrape_screener(state.ticker)
 
-            state.stock_data["screener_ratios"]      = screener_result.ratios
-            state.stock_data["screener_financials"]  = screener_result.financials
-            state.stock_data["screener_data_source"] = screener_result.data_source.value
+            state.stock_data["screener_ratios"]          = screener_result.ratios
+            state.stock_data["screener_financials"]      = screener_result.financials
+            state.stock_data["screener_data_source"]     = screener_result.data_source.value
+            state.stock_data["screener_quarters"]        = screener_result.quarters
+            state.stock_data["screener_ratios_history"]  = screener_result.ratios_history
 
             if screener_result.data_source == DataSource.FAILED:
                 logger.warning(
@@ -147,35 +169,39 @@ Produce your quantitative analysis as a JSON object."""
                 f"for {state.ticker}: {e}",
                 exc_info=True
             )
-            state.stock_data["screener_data_source"] = DataSource.FAILED.value
-            state.stock_data["screener_ratios"]      = {}
-            state.stock_data["screener_financials"]  = {}
+            state.stock_data["screener_data_source"]     = DataSource.FAILED.value
+            state.stock_data["screener_ratios"]          = {}
+            state.stock_data["screener_financials"]      = {}
+            state.stock_data["screener_quarters"]        = None
+            state.stock_data["screener_ratios_history"]  = None
 
         # ── Step B: Build prompt — now includes screener data ──
         prompt = self._build_prompt(state)
 
         # ── Step C: FMP MCP + RAG agent — unchanged from before ──
-        server_params = StdioServerParameters(
-            command="python",
-            args=["src/mcp/fmp_server.py"]
+        import os
+        client = MultiServerMCPClient({
+            "fmp": {
+                "command": "python",
+                "args": ["src/mcp/fmp_server.py"],
+                "transport": "stdio",
+                "env": dict(os.environ)
+            }
+        })
+        mcp_tools = await client.get_tools()
+
+        rag_tools = [fetch_financial_statements, deep_dive_cross_ref, historical_trend_search]
+        # User requested to disable FMP tools temporarily
+        all_tools = rag_tools # mcp_tools + rag_tools
+
+        agent = create_agent(
+            model=self._get_llm(),
+            tools=all_tools,
+            system_prompt=self.system_prompt,
+            response_format=QuantitativeOutput
         )
 
-        async with stdio_client(server_params) as (read, write):
-            async with MultiServerMCPClient() as client:
-                await client.connect_to_server("fmp", read=read, write=write)
-                mcp_tools = await client.get_tools()
-
-                rag_tools = [fetch_financial_statements, deep_dive_cross_ref, historical_trend_search]
-                all_tools = mcp_tools + rag_tools
-
-                agent = create_agent(
-                    model=self._get_llm(),
-                    tools=all_tools,
-                    system_prompt=self.system_prompt,
-                    response_format=QuantitativeOutput
-                )
-
-                result = await agent.ainvoke({"messages": [{"role": "user", "content": prompt}]})
+        result = await agent.ainvoke({"messages": [{"role": "user", "content": prompt}]})
 
         # ── Step D: Extract result — unchanged from before ──
         structured: QuantitativeOutput = result.get("structured_response")

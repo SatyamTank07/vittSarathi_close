@@ -87,27 +87,28 @@ Produce your risk assessment as a JSON object. Be thorough and skeptical."""
 
         prompt = self._build_prompt(state)
 
-        server_params = StdioServerParameters(
-            command="python",
-            args=["src/mcp/risk_and_governance.py"]
+        import os
+        client = MultiServerMCPClient({
+            "risk": {
+                "command": "python",
+                "args": ["src/mcp/risk_and_governance.py"],
+                "transport": "stdio",
+                "env": dict(os.environ)
+            }
+        })
+        mcp_tools = await client.get_tools()
+                
+        rag_tools = [analyze_risk_governance]
+        all_tools = mcp_tools + rag_tools
+                
+        agent = create_agent(
+            model=self._get_llm(),
+            tools=all_tools,
+            system_prompt=self.system_prompt,
+            response_format=RiskGovernanceOutput
         )
-        
-        async with stdio_client(server_params) as (read, write):
-            async with MultiServerMCPClient() as client:
-                await client.connect_to_server("risk", read=read, write=write)
-                mcp_tools = await client.get_tools()
-                
-                rag_tools = [analyze_risk_governance]
-                all_tools = mcp_tools + rag_tools
-                
-                agent = create_agent(
-                    model=self._get_llm(),
-                    tools=all_tools,
-                    system_prompt=self.system_prompt,
-                    response_format=RiskGovernanceOutput
-                )
 
-                result = await agent.ainvoke({"messages": [{"role": "user", "content": prompt}]})
+        result = await agent.ainvoke({"messages": [{"role": "user", "content": prompt}]})
         
         structured: RiskGovernanceOutput = result.get("structured_response")
         

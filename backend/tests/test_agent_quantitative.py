@@ -55,10 +55,7 @@ async def test_quantitative_agent_flow(
     # 3. Mock MultiServerMCPClient
     mock_client_instance = AsyncMock()
     mock_client_instance.get_tools.return_value = [{"name": "fake_mcp_tool"}]
-    
-    mock_mcp_client_cm = AsyncMock()
-    mock_mcp_client_cm.__aenter__.return_value = mock_client_instance
-    mock_mcp_client_cls.return_value = mock_mcp_client_cm
+    mock_mcp_client_cls.return_value = mock_client_instance
     
     # 4. Mock LangChain Agent
     mock_agent_instance = AsyncMock()
@@ -94,7 +91,6 @@ async def test_quantitative_agent_flow(
         assert result_state.stock_data["screener_ratios"]["PE"] == 25
         
         # Verify MCP Calls
-        mock_client_instance.connect_to_server.assert_called_once()
         mock_client_instance.get_tools.assert_called_once()
         
         # Verify LangChain Agent Tools Merged
