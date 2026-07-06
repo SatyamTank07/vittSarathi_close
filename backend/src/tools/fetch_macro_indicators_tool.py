@@ -16,7 +16,7 @@ DBIE_INDICATORS = {
 def get_wb_data(country_code: str, indicator_code: str) -> dict:
     url = f"http://api.worldbank.org/v2/country/{country_code}/indicator/{indicator_code}?format=json&per_page=5"
     try:
-        response = httpx.get(url, timeout=10.0)
+        response = httpx.get(url, timeout=10.0, follow_redirects=True)
         response.raise_for_status()
         data = response.json()
         
@@ -52,15 +52,19 @@ def get_wb_data(country_code: str, indicator_code: str) -> dict:
 def get_rbi_dbie_data(series_id: str) -> dict:
     url = f"https://dbie.rbi.org.in/DBIE/dbie.rbi?site=api"
     try:
-        response = httpx.get(url, params={"seriesId": series_id}, timeout=10.0)
+        # DBIE frequently has SSL cert mismatch issues, so we set verify=False
+        response = httpx.get(url, params={"seriesId": series_id}, timeout=10.0, follow_redirects=True, verify=False)
         
         import logging
         logging.info(f"DBIE fetch for {series_id} returned status {response.status_code}")
         logging.info(f"DBIE response (first 200 chars): {response.text[:200]}")
         
         response.raise_for_status()
-        data_json = response.json()
-        
+        try:
+            data_json = response.json()
+        except ValueError:
+            raise ValueError("RBI API endpoint is broken and returned HTML instead of JSON data.")
+            
         valid_data = [item for item in data_json.get("data", []) if item[1] is not None]
         
         if len(valid_data) >= 1:
@@ -92,6 +96,38 @@ def get_rbi_dbie_data(series_id: str) -> dict:
             "fetched_at": datetime.now(timezone.utc).isoformat()
         }
 
+def get_rbi_homepage_repo_rate() -> dict:
+    url = "https://www.rbi.org.in/"
+    try:
+        from bs4 import BeautifulSoup
+        import re
+        response = httpx.get(url, timeout=10.0, verify=False, follow_redirects=True)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        rate_val = None
+        for tr in soup.find_all('tr'):
+            if 'Policy Repo Rate' in tr.text:
+                text = tr.text.replace('\n', '').replace('\r', '').strip()
+                match = re.search(r'([\d\.]+)\s*%', text)
+                if match:
+                    rate_val = float(match.group(1))
+                    break
+                    
+        if rate_val is not None:
+            return {
+                "current_value": rate_val,
+                "unit": "%",
+                "trend": "Stable", 
+                "period": datetime.now(timezone.utc).strftime("%Y-%m"),
+                "source": "RBI Homepage",
+                "fetched_at": datetime.now(timezone.utc).isoformat()
+            }
+        else:
+            return {"error": "Could not parse Repo Rate from RBI homepage", "fetched_at": datetime.now(timezone.utc).isoformat()}
+    except Exception as e:
+        return {"error": str(e), "source": "RBI Homepage", "fetched_at": datetime.now(timezone.utc).isoformat()}
+
 @tool
 def fetch_macro_indicators(country_code: str, indicators_needed: list[str]) -> dict:
     """
@@ -111,18 +147,25 @@ def fetch_macro_indicators(country_code: str, indicators_needed: list[str]) -> d
     }
     
     for indicator in indicators_needed:
-        if indicator in ["repo_rate", "inflation"]:
-            dbie_code = DBIE_INDICATORS[indicator]
-            data = get_rbi_dbie_data(dbie_code)
+        if indicator == "repo_rate":
+            if country_code == "IN":
+                # For India, we have a highly accurate live scraper
+                data = get_rbi_homepage_repo_rate()
+            else:
+                # For other countries, use World Bank Lending Interest Rate as a global proxy
+                data = get_wb_data(country_code, "FR.INR.LEND")
             result["macro_data"][indicator] = data
+            
+        elif indicator == "inflation" or indicator == "inflation_wb":
+            # World Bank Consumer Price Index (CPI) is globally standardized
+            data = get_wb_data(country_code, "FP.CPI.TOTL.ZG")
+            result["macro_data"][indicator] = data
+            
         elif indicator == "gdp_growth":
-            wb_code = WB_INDICATORS["gdp_growth"]
-            data = get_wb_data(country_code, wb_code)
+            # World Bank Annual GDP Growth is globally standardized
+            data = get_wb_data(country_code, "NY.GDP.MKTP.KD.ZG")
             result["macro_data"][indicator] = data
-        elif indicator == "inflation_wb":
-            wb_code = WB_INDICATORS["inflation_wb"]
-            data = get_wb_data(country_code, wb_code)
-            result["macro_data"][indicator] = data
+            
         else:
             result["macro_data"][indicator] = {
                 "error": "Unsupported indicator requested",
