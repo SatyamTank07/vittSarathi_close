@@ -189,3 +189,16 @@ export async function fetchDocumentStatus(document_id) {
     return null
   }
 }
+
+/**
+ * @returns {Promise<Array<{id: string, company_id: string, fiscal_year: number, report_type: string, ingestion_status: string, total_pages: number, error_message: string, created_at: string}>|null>}
+ */
+export async function fetchAllDocuments() {
+  try {
+    const res = await fetch(`${BASE_URL}/api/documents/`)
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
+}

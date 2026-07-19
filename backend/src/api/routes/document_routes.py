@@ -59,7 +59,15 @@ async def run_pipeline_background(pdf_path: str, meta: DocumentMetadataOutput, d
         
     except Exception as e:
         logger.error(f"Background ingestion failed: {e}")
-        # IngestionPipeline handles its own failure state updates
+        # Fallback to update DB if it was created but not updated by pipeline
+        try:
+            doc = db.query(RAGDocument).filter(RAGDocument.file_name.contains(document_id)).first()
+            if doc and doc.ingestion_status == "processing":
+                doc.ingestion_status = "failed"
+                doc.error_message = f"Catastrophic failure: {str(e)}"[:1000]
+                db.commit()
+        except Exception as inner_e:
+            logger.error(f"Failed to update database fallback: {inner_e}")
     finally:
         db.close()
 
@@ -116,12 +124,17 @@ async def upload_document(
 @router.get("/{document_id}/status")
 def get_document_status(document_id: str, db: Session = Depends(get_db)):
     """Check the ingestion status of a document."""
+    doc = None
     try:
         doc_uuid = uuid.UUID(document_id)
+        doc = db.query(RAGDocument).filter(RAGDocument.id == doc_uuid).first()
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid document ID format")
+        pass
         
-    doc = db.query(RAGDocument).filter(RAGDocument.id == doc_uuid).first()
+    if not doc:
+        # Fallback: The tracking_id might be the temporary file_id!
+        doc = db.query(RAGDocument).filter(RAGDocument.file_name.startswith(document_id)).first()
+
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
         
@@ -132,3 +145,21 @@ def get_document_status(document_id: str, db: Session = Depends(get_db)):
         "fiscal_year": doc.fiscal_year,
         "error_message": doc.error_message
     }
+
+@router.get("/")
+def list_documents(db: Session = Depends(get_db)):
+    """List all ingested documents, sorted by newest first."""
+    docs = db.query(RAGDocument).order_by(RAGDocument.created_at.desc()).all()
+    return [
+        {
+            "id": str(doc.id),
+            "company_id": doc.company_id,
+            "fiscal_year": doc.fiscal_year,
+            "report_type": doc.report_type,
+            "ingestion_status": doc.ingestion_status,
+            "total_pages": doc.total_pages,
+            "error_message": doc.error_message,
+            "created_at": doc.created_at.isoformat() if doc.created_at else None
+        }
+        for doc in docs
+    ]

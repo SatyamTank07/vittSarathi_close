@@ -57,8 +57,7 @@ Please use your tools to fetch recent news and then produce your assessment as a
 """
 
     async def execute(self, state: SharedState) -> SharedState:
-        from langchain.agents import create_tool_calling_agent, AgentExecutor
-        from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+        from langchain.agents import create_agent
         
         state.agent_statuses[self.agent_name] = "running"
         logger.info(f"[{self.agent_name}] Analyzing {state.ticker}")
@@ -68,35 +67,20 @@ Please use your tools to fetch recent news and then produce your assessment as a
         # Set up tools
         tools = [fetch_news_rss, read_custom_rss, fetch_macro_indicators, fetch_exchange_announcements]
 
-        # Use LangChain's generic create_tool_calling_agent
-        # Alternatively, if there's a custom helper in the project, we should use it.
-        # Here we'll stick to a common LangChain pattern with structured output
-        llm = self._get_llm()
-        
-        # We need to bind the tools and the structured output format
-        # However, typically tool calling and structured output are mutually exclusive in a single invoke.
-        # A common pattern is to let the agent run with tools, and then parse the final output.
-        
-        # For simplicity and consistency with other agents, we can run a standard tool-calling agent
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", self.system_prompt),
-            ("user", "{input}"),
-            MessagesPlaceholder(variable_name="agent_scratchpad"),
-        ])
-        
-        agent = create_tool_calling_agent(llm, tools, prompt)
-        agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
+        agent = create_agent(
+            model=self._get_llm(),
+            tools=tools,
+            system_prompt=self.system_prompt,
+            response_format=SentimentOutput
+        )
 
         try:
-            # We add instructions for the agent to return JSON directly in the final answer
-            extended_prompt = prompt_text + "\n\nIMPORTANT: Your final answer MUST be valid JSON matching the SentimentOutput schema."
-            result = agent_executor.invoke({"input": extended_prompt})
-            output_str = result.get("output", "")
+            result = await agent.ainvoke({"messages": [{"role": "user", "content": prompt_text}]})
+            structured: SentimentOutput = result.get("structured_response")
             
-            # Use LLM to cleanly parse the string into the Pydantic model if it's not strictly structured
-            parser_llm = llm.with_structured_output(SentimentOutput)
-            structured = parser_llm.invoke(output_str)
-            
+            if not structured:
+                raise ValueError(f"[{self.agent_name}] Agent did not return a structured_response for '{state.ticker}'")
+                
             if structured.macroeconomic_environment.fetched_at is None:
                 from datetime import datetime, timezone
                 structured.macroeconomic_environment.fetched_at = datetime.now(timezone.utc).isoformat()

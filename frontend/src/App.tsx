@@ -5,6 +5,7 @@ import AnalysisReport from './components/AnalysisReport';
 import ChatPanel from './components/ChatPanel';
 import AgentProgressStrip from './components/AgentProgressStrip';
 import UploadPanel from './components/UploadPanel';
+import DocumentLibrary from './components/DocumentLibrary';
 // @ts-ignore
 import { useAnalysis } from './hooks/useAnalysis';
 import { useHealthCheck } from './hooks/useHealthCheck';
@@ -94,13 +95,15 @@ function App() {
     highlightedCards,
   } = useAnalysis();
 
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+  const [libraryRefreshTrigger, setLibraryRefreshTrigger] = useState(0);
+
   return (
     <div className="app-container">
-      <Header isOnline={isOnline} />
+      <Header isOnline={isOnline} onOpenLibrary={() => setIsLibraryOpen(true)} />
 
       <main className="app-main-content">
-        <UploadPanel isOnline={isOnline} />
-
         {/* Loading State */}
         {loading && (
           <AgentProgressStrip
@@ -142,8 +145,35 @@ function App() {
         clarificationMessage={clarificationMessage}
         onSubmit={submitQuery}
         onResolveClarification={resolveClarification}
+        onOpenUploadModal={() => setIsUploadModalOpen(true)}
         sessionId={sessionId}
         isOnline={isOnline}
+      />
+
+      {isUploadModalOpen && (
+        <div className="upload-modal-overlay" onClick={() => setIsUploadModalOpen(false)}>
+          <div className="upload-modal-content" onClick={e => e.stopPropagation()}>
+            <button className="upload-modal-close" onClick={() => setIsUploadModalOpen(false)}>
+              <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <UploadPanel 
+              isOnline={isOnline} 
+              onUploadSuccess={() => {
+                setIsUploadModalOpen(false);
+                setIsLibraryOpen(true);
+                setLibraryRefreshTrigger(prev => prev + 1);
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      <DocumentLibrary 
+        isOpen={isLibraryOpen} 
+        onClose={() => setIsLibraryOpen(false)} 
+        refreshTrigger={libraryRefreshTrigger}
       />
     </div>
   );

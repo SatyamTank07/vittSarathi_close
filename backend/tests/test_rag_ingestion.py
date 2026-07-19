@@ -131,6 +131,10 @@ async def test_pipeline_integration_mocked():
     pipeline.embedding_service = AsyncMock()
     pipeline.embedding_service.embed_batch.return_value = [[0.1] * 1536 for _ in range(1)]
     
+    # Mock raw SQL store to avoid missing pgvector columns in test DB
+    pipeline._store_embeddings = AsyncMock()
+    pipeline._update_fts_vectors = AsyncMock()
+    
     # Disable LLM in Chunker for fast summary
     pipeline.chunker.llm = None
     
@@ -161,3 +165,83 @@ async def test_pipeline_integration_mocked():
             db.execute(text("DELETE FROM rag_documents WHERE id = :id"), {"id": status.document_id})
             db.commit()
         db.close()
+
+from src.rag.ingestion.ref_extractor import RefExtractor
+from src.rag.ingestion.sarvam_client import SarvamClient
+from src.rag.models.schemas import TableData
+from src.rag.ingestion.embedding_service import EmbeddingService
+
+def test_ref_extractor_table():
+    """Test extracting footnote references from a table without API calls"""
+    extractor = RefExtractor()
+    
+    # Create fake table
+    table = TableData(
+        headers=[["Assets", "Amount Note 5"]],
+        rows=[["Cash", "100 (1)"], ["Inventory", "50 *"]],
+        footnotes=[]
+    )
+    
+    refs = extractor.extract_refs_from_table(table, page_number=1)
+    
+    assert len(refs) == 3
+    ref_codes = [r.ref_code for r in refs]
+    assert "Note 5" in ref_codes
+    assert "(1)" in ref_codes
+    assert "*" in ref_codes
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient.post")
+@patch("httpx.AsyncClient.put")
+@patch("httpx.AsyncClient.get")
+async def test_sarvam_client_mocked(mock_get, mock_put, mock_post):
+    """Test SarvamClient async API calls by mocking the responses (zero cost)"""
+    client = SarvamClient(api_key="fake")
+    
+    # 1. Mock upload_file
+    mock_post.return_value = MagicMock(status_code=200, json=lambda: {"presigned_url": "http://fake.url/upload", "file_id": "123"})
+    mock_put.return_value = MagicMock(status_code=200)
+    
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as temp_pdf:
+        temp_pdf.write(b"fake pdf")
+        temp_pdf_path = temp_pdf.name
+        
+    try:
+        upload_info = await client.upload_file(temp_pdf_path)
+        assert upload_info["file_id"] == "123"
+        
+        # 2. Mock submit_job
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {"job_id": "job456"})
+        job_id = await client.submit_job(upload_info)
+        assert job_id == "job456"
+        
+        # 3. Mock poll_job
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {"job_state": "completed", "page_metrics": {"pages_processed": 1, "total_pages": 1}})
+        status = await client.poll_job(job_id)
+        assert status["job_state"] == "completed"
+        
+    finally:
+        if os.path.exists(temp_pdf_path):
+            os.remove(temp_pdf_path)
+
+@pytest.mark.asyncio
+@patch("src.rag.ingestion.embedding_service.AsyncOpenAI")
+@patch.dict("os.environ", {"OPENAI_API_KEY": "fake"})
+async def test_embedding_service_mocked(mock_openai):
+    """Test EmbeddingService without calling real OpenAI API"""
+    # Setup mock
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+    
+    # Mock response
+    mock_response = MagicMock()
+    mock_response.data = [MagicMock(embedding=[0.5] * 1536), MagicMock(embedding=[0.2] * 1536)]
+    mock_client.embeddings.create = AsyncMock(return_value=mock_response)
+    
+    service = EmbeddingService()
+    embeddings = await service.embed_batch(["text 1", "text 2"])
+    
+    assert len(embeddings) == 2
+    assert len(embeddings[0]) == 1536
+    assert embeddings[0][0] == 0.5
+

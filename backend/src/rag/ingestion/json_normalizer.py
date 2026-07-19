@@ -250,15 +250,6 @@ class JsonNormalizer:
 
     def _detect_block_type(self, raw_block: dict) -> str:
         """Detect the type of a content block from its fields."""
-        # Check explicit type field
-        block_type = (
-            raw_block.get("type")
-            or raw_block.get("block_type")
-            or raw_block.get("element_type")
-            or raw_block.get("category")
-            or ""
-        ).lower().strip()
-
         type_map = {
             "table": "table",
             "tabular": "table",
@@ -279,8 +270,18 @@ class JsonNormalizer:
             "para": "text",
         }
 
-        if block_type in type_map:
-            return type_map[block_type]
+        # layout_tag is Sarvam's dedicated layout classification — check it
+        # first. Other fields (type/block_type/etc.) are often generic and
+        # would otherwise short-circuit past the real signal.
+        candidate_fields = ("layout_tag", "type", "block_type", "element_type", "category")
+
+        for field in candidate_fields:
+            raw_value = raw_block.get(field)
+            if not raw_value:
+                continue
+            normalized = str(raw_value).lower().strip()
+            if normalized in type_map:
+                return type_map[normalized]
 
         # Heuristic: check for table-like data
         if any(k in raw_block for k in ("rows", "cells", "table_data", "headers", "columns")):
@@ -316,7 +317,7 @@ class JsonNormalizer:
             table_html=table_html,
             content_text=self._table_to_text(table_data),
             confidence=float(raw_block.get("confidence", 1.0)),
-            bounding_box=raw_block.get("bbox") or raw_block.get("bounding_box"),
+            bounding_box=raw_block.get("bbox") or raw_block.get("bounding_box") or raw_block.get("coordinates"),
             page_number=page_number,
         )
 
@@ -353,8 +354,19 @@ class JsonNormalizer:
         if not rows and isinstance(raw.get("cells"), list):
             rows, headers = self._cells_list_to_grid(raw["cells"])
 
-        # If we still have no data, this isn't a valid table
+        # Path 4: Sarvam might put HTML or Markdown directly in raw["text"]
         if not rows and not headers:
+            text = raw.get("text", "").strip()
+            if text.startswith("<table") or text.startswith("<TABLE"):
+                parsed_table = self._parse_html_table(text)
+                if parsed_table:
+                    return parsed_table
+            elif "|" in text and "-" in text:
+                parsed_table = self._parse_markdown_table(text.splitlines())
+                if parsed_table:
+                    return parsed_table
+            
+            # If we still have no data, this isn't a valid table
             return None
 
         # Extract footnote markers from all cells
@@ -536,7 +548,7 @@ class JsonNormalizer:
             content_text=text.strip(),
             heading_level=min(max(int(level), 1), 6),
             confidence=float(raw_block.get("confidence", 1.0)),
-            bounding_box=raw_block.get("bbox") or raw_block.get("bounding_box"),
+            bounding_box=raw_block.get("bbox") or raw_block.get("bounding_box") or raw_block.get("coordinates"),
             page_number=page_number,
         )
 
@@ -552,7 +564,7 @@ class JsonNormalizer:
             block_type=block_type if block_type in ("text", "list", "image") else "text",
             content_text=text.strip(),
             confidence=float(raw_block.get("confidence", 1.0)),
-            bounding_box=raw_block.get("bbox") or raw_block.get("bounding_box"),
+            bounding_box=raw_block.get("bbox") or raw_block.get("bounding_box") or raw_block.get("coordinates"),
             page_number=page_number,
         )
 

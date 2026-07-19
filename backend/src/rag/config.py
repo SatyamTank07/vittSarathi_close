@@ -19,6 +19,10 @@ PROMPTS_DIR = RAG_ROOT / "prompts"
 TEMP_DIR = RAG_ROOT / ".tmp"
 TEMP_DIR.mkdir(exist_ok=True)
 
+# Directory to store raw Sarvam JSON output for debugging
+RAW_OUTPUT_DIR = RAG_ROOT / "raw_sarvam_outputs"
+RAW_OUTPUT_DIR.mkdir(exist_ok=True)
+
 
 # ──────────────────────────────────────────────────────────────
 # Sarvam Vision API
