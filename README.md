@@ -1,35 +1,56 @@
-# 🔮 vittSarathi - Intelligent AI Playground
+# 🔮 vittSarathi - Intelligent Financial AI Agent
 
-A high-fidelity playground application featuring a containerized **FastAPI** backend and a sleek, modern **React + Vite** frontend. The setup is designed with a premium dark theme, neon glowing aesthetics, and a dynamic glassmorphic card that real-time monitors the connection status of the FastAPI backend.
+A high-fidelity financial analysis platform featuring a containerized **FastAPI** multi-agent backend and a sleek, modern **React + Vite** frontend. The application uses a fleet of specialized AI agents (Quantitative, Qualitative, Risk & Governance) backed by a RAG pipeline and web scraping tools to deliver comprehensive stock analyses. The frontend features a premium dark theme, neon glowing aesthetics, and dynamic glassmorphic elements.
 
 ---
 
-## 🎨 Tech Stack & Design Architecture
+## 🎨 Tech Stack & Architecture
 
-*   **Backend:** FastAPI (Python 3.11-slim container)
-*   **Frontend:** React 18, Vite, Vanilla CSS
-*   **Aesthetics:** Glassmorphism, Neon Violet/Cyan gradients, active state glow effects, custom typography (`Outfit` & `Inter` from Google Fonts).
-*   **Containerization:** Docker & Docker Compose
+### 🧠 Backend (AI & Data Processing)
+*   **Framework:** FastAPI (Python 3.11)
+*   **AI Framework:** LangChain & LangGraph (Multi-Agent Architecture)
+*   **Specialized Agent Fleet:**
+    *   **The Orchestrator:** The brain of the system. Reads the user query, generates an execution plan, and dynamically dispatches tasks to relevant specialized agents.
+    *   **The Accountant (Quantitative Agent):** Performs deep financial ratio analysis, valuation, and margin trends. Features sub-agents for DCF modeling, peer comparison, and segment-level revenue splitting.
+    *   **The Strategist (Qualitative Agent):** Evaluates business moats and management commentary. Features sub-agents that run NLP on earnings calls to track management credibility and score competitive moats using Porter's 5 forces.
+    *   **The Investigator (Risk & Governance):** Conducts skeptical investigations of red flags. Scans for active litigations, tracks promoter pledging history, and analyzes related-party transactions for tunneling patterns.
+    *   **The Pulse Reader (Sentiment & Macro):** Analyzes market mood via FinBERT, tracks FII/DII institutional flows, and measures sector rotation momentum.
+*   **Advanced RAG Pipeline:** 
+    *   Uses **PostgreSQL + pgvector** for high-dimensional vector embeddings.
+    *   Features a sophisticated hybrid retrieval system utilizing a Vector Store, Page Index Store, and Reference Store.
+    *   Supports metadata filtering (Company, Year, Quarter, Report Type) and custom Context Assembly to feed precise, verified context to the LLMs.
+*   **Tools:**
+    *   `yfinance` for real-time market data.
+    *   Playwright MCP (Model Context Protocol) server for web scraping.
+*   **Database:** PostgreSQL with `pgvector` extension.
 
-### 🔄 Communication Flow
+### 💻 Frontend (UI/UX)
+*   **Framework:** React 19, Vite, Vanilla CSS
+*   **Features:** Real-time agent status tracking, Markdown-rendered analysis reports, document upload & management, conversational chat interface.
+*   **Aesthetics:** Glassmorphism, Neon Violet/Cyan gradients, active state glow effects, custom typography (`Outfit` & `Inter`).
+
+### 🐳 Containerization
+*   **Docker & Docker Compose** for seamless orchestration of the Backend, DB, and Playwright MCP server.
+
+---
+
+## 🔄 Multi-Agent Workflow
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant FE as React Frontend (Port 5173)
-    participant BE as FastAPI Container (Port 8000)
+    participant User
+    participant Orchestrator
+    participant Agents as Specialized Agents
+    participant Tools as Tools (RAG/Web/API)
     
-    Note over FE: Page loads & initiates poll
-    rect rgba(168, 85, 247, 0.05)
-        FE->>BE: GET http://localhost:8000/
-        alt Backend is online
-            BE-->>FE: {"status": "running", "message": "..."}
-            Note over FE: Dynamic status dot pulses Green (Online)
-        else Backend is offline/unreachable
-            Note over FE: Dynamic status dot pulses Red (Offline)
-        end
-    end
-    Note over FE: Poll repeats every 3 seconds
+    User->>Orchestrator: Submits Analysis Request (e.g., "Analyze TCS")
+    Orchestrator->>Agents: Dispatches sub-tasks (Quant, Qual, Risk)
+    Agents->>Tools: Fetch Market Data, Parse Docs, Scrape Web
+    Tools-->>Agents: Return Data
+    Agents-->>Orchestrator: Submit Sub-Reports
+    Orchestrator->>Synthesizer: Compiles Final Thesis
+    Synthesizer-->>User: Delivers Comprehensive Dashboard
 ```
 
 ---
@@ -37,26 +58,26 @@ sequenceDiagram
 ## 📁 Workspace Directory Structure
 
 ```text
-vittSarathi/
+vittSarathi_close/
 ├── backend/
-│   ├── app/
-│   │   ├── __init__.py
-│   │   └── main.py              # FastAPI application with CORS middleware
-│   ├── Dockerfile               # Multi-stage/Slim optimized container build
-│   └── requirements.txt         # Backend Python dependencies
-├── frontend/
-│   ├── public/
 │   ├── src/
-│   │   ├── App.css              # Custom layout, animations & glassmorphic styles
-│   │   ├── App.jsx              # Status checker logic & layout markup
-│   │   ├── index.css            # Root design system & global styling tokens
-│   │   └── main.jsx
-│   ├── eslint.config.js
+│   │   ├── agents/      # Multi-agent implementations (Orchestrator, Quant, Qual, etc.)
+│   │   ├── api/         # FastAPI routes, controllers, and schemas
+│   │   ├── rag/         # RAG pipeline (ingestion, retrieval, pgvector models)
+│   │   ├── tools/       # Tools (yfinance, web scraper)
+│   │   └── mcp/         # MCP integration configuration
+│   ├── run_demo.py      # CLI for testing RAG ingestion and querying
+│   ├── Dockerfile
+│   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   │   ├── components/  # React components (ChatPanel, AnalysisReport, etc.)
+│   │   ├── hooks/       # Custom React hooks for analysis & health check
+│   │   ├── App.tsx      # Main application layout & status checker logic
+│   │   └── index.css    # Root design system & global styling tokens
 │   ├── index.html
-│   ├── package.json
-│   └── vite.config.js
-├── docker-compose.yml           # Runs backend in hot-reload mode
-└── readme.md                    # Project documentation (this file)
+│   └── package.json
+└── docker-compose.yml   # Runs backend, pgvector DB, and Playwright MCP
 ```
 
 ---
@@ -64,73 +85,39 @@ vittSarathi/
 ## 🚀 Quick Start Guide
 
 ### 📋 Prerequisites
-*   [Docker Desktop](https://www.docker.com/products/docker-desktop/) (for containerized backend)
-*   [Node.js](https://nodejs.org/) v18+ (for local frontend development)
+*   [Docker Desktop](https://www.docker.com/products/docker-desktop/) (for backend, db, and MCP)
+*   [Node.js](https://nodejs.org/) v18+ (for frontend)
+*   An OpenAI API Key (or supported LLM provider) - configure in `backend/.env`.
 
 ---
 
-### 1. Spin Up the Backend (Docker)
-Open your terminal in the root directory `c:\Satyam\vittSarathi` and run:
+### 1. Configure Environment Variables
+Create a `.env` file in the `backend` directory (use `.env.example` as a template):
+```env
+OPENAI_API_KEY=your-api-key-here
+# Other necessary API keys for integrations
+```
+
+### 2. Spin Up the Backend Stack (Docker)
+Open your terminal in the root directory and run:
 ```powershell
 docker compose up -d
 ```
-This builds the image, starts the backend container, exposes port `8000`, and mounts the `./backend` directory for hot-reloading.
+This starts the PostgreSQL (pgvector) database, the Playwright MCP server, and the FastAPI backend (hot-reloading enabled).
+*   Verify backend is alive: Open [http://localhost:8000/docs](http://localhost:8000/docs) in your browser.
 
-*   Verify backend is alive: Open [http://localhost:8000/](http://localhost:8000/) in your browser.
-
----
-
-### 2. Start the Frontend (Vite)
-Navigate to the `frontend` folder and run the developer server:
+### 3. Start the Frontend (Vite)
+Navigate to the `frontend` folder and run the dev server:
 ```powershell
 cd frontend
 npm install
 npm run dev
 ```
-Open [http://localhost:5173/](http://localhost:5173/) to witness the glassmorphic status UI in action.
+Open [http://localhost:5173/](http://localhost:5173/) to interact with the application.
 
 ---
 
-## ⚙️ Configuration Reference
-
-### Docker Compose Configuration (`docker-compose.yml`)
-The container mounts the local folder using a bind mount to automatically pick up edits to the Python source files:
-```yaml
-version: '3.8'
-
-services:
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: vittsarathi_backend
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./backend:/workspace
-    environment:
-      - PYTHONUNBUFFERED=1
-      - ENV=development
-    restart: always
-```
-
-### CORS Configuration (`backend/app/main.py`)
-To prevent cross-origin issues during local development, FastAPI is configured to accept requests from all origins:
-```python
-from fastapi.middleware.cors import CORSMiddleware
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-```
-
----
-
-## 🛠️ Essential Commands
+## 🛠️ Essential Commands & Scripts
 
 ### Container Administration
 | Task | Command |
@@ -140,12 +127,24 @@ app.add_middleware(
 | **Force Rebuild** | `docker compose up --build -d` |
 | **Stream Live Logs** | `docker logs -f vittsarathi_backend` |
 
+### RAG CLI (`run_demo.py`)
+Test the RAG pipeline locally:
+```bash
+# Initialize Database
+python backend/run_demo.py init-db
+
+# Ingest a PDF Report
+python backend/run_demo.py ingest /path/to/report.pdf --company RIL --year 2024 --type annual
+
+# Query the System
+python backend/run_demo.py query "What was the total revenue in 2024?"
+```
+
 ### Frontend Administration
 | Task | Command |
 | :--- | :--- |
 | **Run Dev Server** | `npm run dev` |
 | **Production Build** | `npm run build` |
-| **Preview Build** | `npm run preview` |
 
 ---
 
